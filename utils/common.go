@@ -11,3 +11,8 @@ const SliceFlag byte = 0x40
 
 // DropMSBArrayFlag is `0011 1111`, used to remove MSB and Slice flag bit
 const DropMSBArrayFlag byte = 0x3F
+
+// IsNodePacket returns true if the tag represents a node package
+func IsNodePacket(tag byte) bool {
+	return tag&MSB == MSB
+}

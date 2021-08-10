@@ -1,14 +1,23 @@
 package y3
 
-import (
-	"fmt"
-)
-
 // basePacket is the base type of the NodePacket and PrimitivePacket
 type basePacket struct {
 	tag    *Tag
+	tagbuf []byte
 	length int
+	lenbuf []byte
 	valbuf []byte
+	buf    []byte
+}
+
+func (bp *basePacket) buildBuf() {
+	bp.buf = append(bp.tagbuf, bp.lenbuf...)
+	bp.buf = append(bp.buf, bp.valbuf...)
+}
+
+// GetRawBytes get raw bytes of this packet
+func (bp *basePacket) GetRawBytes() []byte {
+	return bp.buf
 }
 
 func (bp *basePacket) Length() int {
@@ -16,8 +25,8 @@ func (bp *basePacket) Length() int {
 }
 
 // SeqID returns Tag Key
-func (bp *basePacket) SeqID() int {
-	return int(bp.tag.SeqID())
+func (bp *basePacket) SeqID() byte {
+	return bp.tag.SeqID()
 }
 
 // IsSlice determine if the current node is a Slice
@@ -28,10 +37,4 @@ func (bp *basePacket) IsSlice() bool {
 // GetValBuf get raw buffer of NodePacket
 func (bp *basePacket) GetValBuf() []byte {
 	return bp.valbuf
-}
-
-// String prints debug info
-func (p *PrimitivePacket) String() string {
-	return fmt.Sprintf("Tag=%#x, Length=%v, RawDataLength=%v, Raw=[%#x]",
-		p.SeqID(), p.length, len(p.valbuf), p.valbuf)
 }

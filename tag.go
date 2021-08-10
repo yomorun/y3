@@ -1,8 +1,6 @@
 package y3
 
 import (
-	"fmt"
-
 	"github.com/yomorun/y3/utils"
 )
 
@@ -29,14 +27,9 @@ func (t *Tag) SeqID() byte {
 	return t.raw & utils.DropMSBArrayFlag
 }
 
-// String return string description
-func (t *Tag) String() string {
-	return fmt.Sprintf("Tag: raw=%4b, SeqID=%#v", t.raw, t.SeqID())
-}
-
 // NewTag create a NodePacket Tag field
-func NewTag(b int) *Tag {
-	return &Tag{raw: byte(b)}
+func NewTag(b byte) *Tag {
+	return &Tag{raw: b}
 }
 
 // Raw return the original byte

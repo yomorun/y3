@@ -7,7 +7,7 @@ import (
 )
 
 func TestNodeTag(t *testing.T) {
-	var expected int = 0x81
+	var expected byte = 0x81
 	tag := NewTag(expected)
 	assert.True(t, tag.IsNode())
 	assert.False(t, tag.IsSlice())
@@ -16,7 +16,7 @@ func TestNodeTag(t *testing.T) {
 }
 
 func TestSliceTag(t *testing.T) {
-	var expected int = 0x42
+	var expected byte = 0x42
 	tag := NewTag(expected)
 	assert.False(t, tag.IsNode())
 	assert.True(t, tag.IsSlice())
