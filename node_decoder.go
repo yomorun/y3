@@ -1,6 +1,7 @@
 package y3
 
 import (
+	"bytes"
 	"errors"
 
 	"github.com/yomorun/y3/encoding"
@@ -31,16 +32,20 @@ func DecodeToNodePacket(buf []byte, pct *NodePacket) (consumedBytes int, err err
 		return 0, errors.New("empty buf")
 	}
 
+	pct.basePacket = &basePacket{
+		valbuf: buf,
+		buf:    &bytes.Buffer{},
+	}
+
 	pct.NodePackets = map[byte]NodePacket{}
 	pct.PrimitivePackets = map[byte]PrimitivePacket{}
 
 	pos := 0
 
 	// `Tag`
-	pct.tagbuf = make([]byte, 1)
-	copy(pct.tagbuf, buf[pos:1])
 	tag := NewTag(buf[pos])
 	pct.basePacket.tag = tag
+	pct.buf.WriteByte(buf[pos])
 	pos++
 
 	// `Length`: the type is `varint`
@@ -52,12 +57,10 @@ func DecodeToNodePacket(buf []byte, pct *NodePacket) (consumedBytes int, err err
 		return 0, err
 	}
 	pct.basePacket.length = int(vallen)
-	pct.lenbuf = make([]byte, codec.Size)
-	copy(pct.lenbuf, buf[pos:pos+codec.Size])
+	pct.buf.Write(buf[pos : pos+codec.Size])
 	pos += codec.Size
 	// if `Length` is 0, means empty node packet
 	if vallen == 0 {
-		pct.buildBuf()
 		return pos, nil
 	}
 
@@ -68,10 +71,8 @@ func DecodeToNodePacket(buf []byte, pct *NodePacket) (consumedBytes int, err err
 		return pos, errors.New("found L of V smaller than 0")
 	}
 	endPos := pos + vl
-	pct.basePacket.valbuf = make([]byte, vl)
-	copy(pct.basePacket.valbuf, buf[pos:endPos])
-
-	pct.buildBuf()
+	pct.basePacket.valbuf = buf[pos:endPos]
+	pct.buf.Write(buf[pos:endPos])
 
 	// Parse value to Packet
 	for {

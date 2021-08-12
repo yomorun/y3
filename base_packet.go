@@ -1,23 +1,27 @@
 package y3
 
+import (
+	"bytes"
+)
+
 // basePacket is the base type of the NodePacket and PrimitivePacket
 type basePacket struct {
-	tag    *Tag
-	tagbuf []byte
+	tag *Tag
+	// tagbuf []byte
 	length int
-	lenbuf []byte
+	// lenbuf []byte
 	valbuf []byte
-	buf    []byte
+	buf    *bytes.Buffer
 }
 
-func (bp *basePacket) buildBuf() {
-	bp.buf = append(bp.tagbuf, bp.lenbuf...)
-	bp.buf = append(bp.buf, bp.valbuf...)
-}
+// func (bp *basePacket) buildBuf() {
+// 	bp.buf = append(bp.tagbuf, bp.lenbuf...)
+// 	bp.buf = append(bp.buf, bp.valbuf...)
+// }
 
 // GetRawBytes get raw bytes of this packet
 func (bp *basePacket) GetRawBytes() []byte {
-	return bp.buf
+	return bp.buf.Bytes()
 }
 
 func (bp *basePacket) Length() int {

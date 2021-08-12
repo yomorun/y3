@@ -1,6 +1,7 @@
 package y3
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 
@@ -29,13 +30,13 @@ func DecodeToPrimitivePacket(buf []byte, p *PrimitivePacket) (decodeState, error
 
 	p.basePacket = &basePacket{
 		valbuf: buf,
+		buf:    &bytes.Buffer{},
 	}
 
 	var pos = 0
 	// first byte is `Tag`
-	p.tagbuf = make([]byte, 1)
-	copy(p.tagbuf, buf[pos:1])
 	p.tag = NewTag(buf[pos])
+	p.buf.WriteByte(buf[pos])
 	pos += 1
 	decoder.ConsumedBytes = pos
 
@@ -52,8 +53,7 @@ func DecodeToPrimitivePacket(buf []byte, p *PrimitivePacket) (decodeState, error
 	}
 
 	// codec.Size describes how many bytes used to represent `Length`
-	p.lenbuf = make([]byte, codec.Size)
-	copy(p.lenbuf, buf[pos:pos+codec.Size])
+	p.buf.Write(buf[pos : pos+codec.Size])
 	pos += codec.Size
 
 	decoder.ConsumedBytes = pos
@@ -63,7 +63,6 @@ func DecodeToPrimitivePacket(buf []byte, p *PrimitivePacket) (decodeState, error
 	p.length = int(bufLen)
 	if p.length == 0 {
 		p.valbuf = []byte{}
-		p.buildBuf()
 		return decoder, nil
 	}
 
@@ -74,8 +73,8 @@ func DecodeToPrimitivePacket(buf []byte, p *PrimitivePacket) (decodeState, error
 		return decoder, fmt.Errorf("beyond the boundary, pos=%v, endPos=%v", pos, endPos)
 	}
 	p.valbuf = buf[pos:endPos]
+	p.buf.Write(buf[pos:endPos])
 
-	p.buildBuf()
 	decoder.ConsumedBytes = endPos
 	return decoder, nil
 }
