@@ -3,6 +3,7 @@ package y3
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 
 	"github.com/yomorun/y3/encoding"
@@ -39,6 +40,12 @@ func ReadPacket(reader io.Reader) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// validate len decoded from stream
+	if len < 0 {
+		return nil, fmt.Errorf("y3.ReadPacket() get lenbuf=(%# x), decode len=(%v)", lenbuf.Bytes(), len)
+	}
+
 	// write y3.Length bytes
 	buf.Write(lenbuf.Bytes())
 
