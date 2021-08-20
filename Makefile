@@ -12,7 +12,8 @@ vet:
 	$(GO) vet $(VETPACKAGES)
 
 lint:
-	$(GOLINT) $(GOFILES)
+	#$(GOLINT) $(GOFILES)
+	revive -formatter friendly ./...
 
 test:
 	$(GO) test $(VETPACKAGES)

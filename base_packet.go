@@ -6,29 +6,23 @@ import (
 
 // basePacket is the base type of the NodePacket and PrimitivePacket
 type basePacket struct {
-	tag *Tag
-	// tagbuf []byte
+	tag    *Tag
 	length int
-	// lenbuf []byte
 	valbuf []byte
 	buf    *bytes.Buffer
 }
 
-// func (bp *basePacket) buildBuf() {
-// 	bp.buf = append(bp.tagbuf, bp.lenbuf...)
-// 	bp.buf = append(bp.buf, bp.valbuf...)
-// }
-
-// GetRawBytes get raw bytes of this packet
+// GetRawBytes get all raw bytes of this packet
 func (bp *basePacket) GetRawBytes() []byte {
 	return bp.buf.Bytes()
 }
 
+// Length return the length of Val this packet
 func (bp *basePacket) Length() int {
 	return bp.length
 }
 
-// SeqID returns Tag Key
+// SeqID returns Tag of this packet
 func (bp *basePacket) SeqID() byte {
 	return bp.tag.SeqID()
 }
@@ -38,7 +32,7 @@ func (bp *basePacket) IsSlice() bool {
 	return bp.tag.IsSlice()
 }
 
-// GetValBuf get raw buffer of NodePacket
+// GetValBuf get raw buffer of Val of this packet
 func (bp *basePacket) GetValBuf() []byte {
 	return bp.valbuf
 }

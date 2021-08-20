@@ -8,18 +8,21 @@ import (
 	"github.com/yomorun/y3/encoding"
 )
 
-type decodeState struct {
+// DecodeState represents the state of decoding
+type DecodeState struct {
+	// ConsumedBytes is the bytes consumed by decoder
 	ConsumedBytes int
-	SizeL         int
+	// SizeL is the bytes length of value
+	SizeL int
 }
 
-// DecodePrimitivePacket parse out whole buffer to a PrimitivePacket
+// DecodeToPrimitivePacket parse out whole buffer to a PrimitivePacket
 //
 // Examples:
 // [0x01, 0x01, 0x01] -> Key=0x01, Value=0x01
 // [0x41, 0x06, 0x03, 0x01, 0x61, 0x04, 0x01, 0x62] -> key=0x03, value=0x61; key=0x04, value=0x62
-func DecodeToPrimitivePacket(buf []byte, p *PrimitivePacket) (decodeState, error) {
-	decoder := decodeState{
+func DecodeToPrimitivePacket(buf []byte, p *PrimitivePacket) (*DecodeState, error) {
+	decoder := &DecodeState{
 		ConsumedBytes: 0,
 		SizeL:         0,
 	}
@@ -29,7 +32,7 @@ func DecodeToPrimitivePacket(buf []byte, p *PrimitivePacket) (decodeState, error
 	}
 
 	p.basePacket = &basePacket{
-		valbuf: buf,
+		valbuf: []byte{},
 		buf:    &bytes.Buffer{},
 	}
 
@@ -37,7 +40,7 @@ func DecodeToPrimitivePacket(buf []byte, p *PrimitivePacket) (decodeState, error
 	// first byte is `Tag`
 	p.tag = NewTag(buf[pos])
 	p.buf.WriteByte(buf[pos])
-	pos += 1
+	pos++
 	decoder.ConsumedBytes = pos
 
 	// read `Varint` from buf for `Length of value`
@@ -59,10 +62,15 @@ func DecodeToPrimitivePacket(buf []byte, p *PrimitivePacket) (decodeState, error
 	decoder.ConsumedBytes = pos
 	decoder.SizeL = codec.Size
 
+	// if length<0, error on decoding
+	if bufLen < 0 {
+		return decoder, errors.New("invalid y3 packet, negative length")
+	}
+
 	// the length of value
 	p.length = int(bufLen)
 	if p.length == 0 {
-		p.valbuf = []byte{}
+		p.valbuf = nil
 		return decoder, nil
 	}
 

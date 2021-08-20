@@ -26,7 +26,7 @@ func parsePayload(b []byte) (consumedBytes int, ifNodePacket bool, np *NodePacke
 	return state.ConsumedBytes, false, nil, pp, err
 }
 
-// DecodeNodePacket parse out whole buffer to a NodePacket
+// DecodeToNodePacket parse out whole buffer to a NodePacket
 func DecodeToNodePacket(buf []byte, pct *NodePacket) (consumedBytes int, err error) {
 	if len(buf) == 0 {
 		return 0, errors.New("empty buf")

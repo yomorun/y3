@@ -6,13 +6,13 @@ import (
 
 // NodePacketEncoder used for encode a node packet
 type NodePacketEncoder struct {
-	encoder
+	*encoder
 }
 
 // NewNodePacketEncoder returns an Encoder for node packet
 func NewNodePacketEncoder(sid byte) *NodePacketEncoder {
 	nodeEnc := &NodePacketEncoder{
-		encoder: encoder{
+		encoder: &encoder{
 			isNode: true,
 			buf:    new(bytes.Buffer),
 		},

@@ -11,6 +11,11 @@ func (codec *VarCodec) EncodePVarBool(buffer []byte, value bool) error {
 
 // DecodePVarBool decode to value as PVarBool from buffer
 func (codec *VarCodec) DecodePVarBool(buffer []byte, value *bool) error {
+	if len(buffer) == 0 {
+		*value = false
+		return nil
+	}
+
 	var tmp int64
 	var err = codec.decodePVarInt(buffer, &tmp)
 	if tmp == 1 {

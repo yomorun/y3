@@ -15,25 +15,19 @@ type PrimitivePacket struct {
 // ToInt32 parse raw as int32 value
 func (p *PrimitivePacket) ToInt32() (int32, error) {
 	var val int32
-	codec := encoding.VarCodec{}
-	err := codec.DecodePVarInt32(p.basePacket.valbuf, &val)
+	codec := encoding.VarCodec{Size: len(p.valbuf)}
+	err := codec.DecodeNVarInt32(p.basePacket.valbuf, &val)
 	if err != nil {
 		return 0, err
 	}
 	return val, nil
 }
 
-// ToInt parse raw as int value
-func (p *PrimitivePacket) ToInt() (int, error) {
-	v, err := p.ToInt32()
-	return int(v), err
-}
-
 // ToUInt32 parse raw as uint32 value
 func (p *PrimitivePacket) ToUInt32() (uint32, error) {
 	var val uint32
-	codec := encoding.VarCodec{}
-	err := codec.DecodePVarUInt32(p.valbuf, &val)
+	codec := encoding.VarCodec{Size: len(p.valbuf)}
+	err := codec.DecodeNVarUInt32(p.valbuf, &val)
 	if err != nil {
 		return 0, err
 	}
@@ -43,8 +37,8 @@ func (p *PrimitivePacket) ToUInt32() (uint32, error) {
 // ToInt64 parse raw as int64 value
 func (p *PrimitivePacket) ToInt64() (int64, error) {
 	var val int64
-	codec := encoding.VarCodec{}
-	err := codec.DecodePVarInt64(p.valbuf, &val)
+	codec := encoding.VarCodec{Size: len(p.valbuf)}
+	err := codec.DecodeNVarInt64(p.valbuf, &val)
 	if err != nil {
 		return 0, err
 	}
@@ -54,8 +48,8 @@ func (p *PrimitivePacket) ToInt64() (int64, error) {
 // ToUInt64 parse raw as uint64 value
 func (p *PrimitivePacket) ToUInt64() (uint64, error) {
 	var val uint64
-	codec := encoding.VarCodec{}
-	err := codec.DecodePVarUInt64(p.valbuf, &val)
+	codec := encoding.VarCodec{Size: len(p.valbuf)}
+	err := codec.DecodeNVarUInt64(p.valbuf, &val)
 	if err != nil {
 		return 0, err
 	}

@@ -8,40 +8,39 @@ import (
 
 // PrimitivePacketEncoder used for encode a primitive packet
 type PrimitivePacketEncoder struct {
-	encoder
+	*encoder
 }
 
 // NewPrimitivePacketEncoder return an Encoder for primitive packet
 func NewPrimitivePacketEncoder(sid byte) *PrimitivePacketEncoder {
-	primEnc := &PrimitivePacketEncoder{
-		encoder: encoder{
+	prim := &PrimitivePacketEncoder{
+		encoder: &encoder{
 			isNode: false,
 			buf:    new(bytes.Buffer),
 		},
 	}
 
-	primEnc.seqID = sid
-	return primEnc
+	prim.seqID = sid
+	return prim
 }
 
 // SetInt32Value encode int32 value
 func (enc *PrimitivePacketEncoder) SetInt32Value(v int32) {
-	size := encoding.SizeOfPVarInt32(v)
+	size := encoding.SizeOfNVarInt32(v)
 	codec := encoding.VarCodec{Size: size}
 	enc.valbuf = make([]byte, size)
-	err := codec.EncodePVarInt32(enc.valbuf, v)
+	err := codec.EncodeNVarInt32(enc.valbuf, v)
 	if err != nil {
 		panic(err)
 	}
-	// enc.valBuf.Write(buf)
 }
 
 // SetUInt32Value encode uint32 value
 func (enc *PrimitivePacketEncoder) SetUInt32Value(v uint32) {
-	size := encoding.SizeOfPVarUInt32(v)
+	size := encoding.SizeOfNVarUInt32(v)
 	codec := encoding.VarCodec{Size: size}
 	enc.valbuf = make([]byte, size)
-	err := codec.EncodePVarUInt32(enc.valbuf, v)
+	err := codec.EncodeNVarUInt32(enc.valbuf, v)
 	if err != nil {
 		panic(err)
 	}
@@ -49,10 +48,10 @@ func (enc *PrimitivePacketEncoder) SetUInt32Value(v uint32) {
 
 // SetInt64Value encode int64 value
 func (enc *PrimitivePacketEncoder) SetInt64Value(v int64) {
-	size := encoding.SizeOfPVarInt64(v)
+	size := encoding.SizeOfNVarInt64(v)
 	codec := encoding.VarCodec{Size: size}
 	enc.valbuf = make([]byte, size)
-	err := codec.EncodePVarInt64(enc.valbuf, v)
+	err := codec.EncodeNVarInt64(enc.valbuf, v)
 	if err != nil {
 		panic(err)
 	}
@@ -60,10 +59,10 @@ func (enc *PrimitivePacketEncoder) SetInt64Value(v int64) {
 
 // SetUInt64Value encode uint64 value
 func (enc *PrimitivePacketEncoder) SetUInt64Value(v uint64) {
-	size := encoding.SizeOfPVarUInt64(v)
+	size := encoding.SizeOfNVarUInt64(v)
 	codec := encoding.VarCodec{Size: size}
 	enc.valbuf = make([]byte, size)
-	err := codec.EncodePVarUInt64(enc.valbuf, v)
+	err := codec.EncodeNVarUInt64(enc.valbuf, v)
 	if err != nil {
 		panic(err)
 	}
@@ -104,8 +103,6 @@ func (enc *PrimitivePacketEncoder) SetBoolValue(v bool) {
 
 // SetStringValue encode string
 func (enc *PrimitivePacketEncoder) SetStringValue(v string) {
-	// buf := []byte(v)
-	// enc.valBuf.Write(buf)
 	enc.valbuf = []byte(v)
 }
 
