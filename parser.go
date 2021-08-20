@@ -9,6 +9,7 @@ import (
 	"github.com/yomorun/y3/encoding"
 )
 
+// ReadPacket will try to read a Y3 encoded packet from the reader
 func ReadPacket(reader io.Reader) ([]byte, error) {
 	tag, err := readByte(reader)
 	if err != nil {
@@ -21,7 +22,7 @@ func ReadPacket(reader io.Reader) ([]byte, error) {
 	// write y3.Tag bytes
 	buf.WriteByte(tag)
 
-	// read y3.Length bytes, a varint format.
+	// read y3.Length bytes, a varint format
 	lenbuf := bytes.Buffer{}
 	for {
 		b, err := readByte(reader)

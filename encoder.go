@@ -2,6 +2,7 @@ package y3
 
 import (
 	"bytes"
+	"fmt"
 
 	"github.com/yomorun/y3/encoding"
 )
@@ -39,7 +40,7 @@ func (enc *encoder) addRawPacket(en iEncoder) {
 // setTag write tag as seqID
 func (enc *encoder) writeTag() {
 	if enc.seqID > 0x3F {
-		panic("sid should be in [0..0x7F]")
+		panic(fmt.Errorf("sid should be in [0..0x3F]"))
 	}
 	if enc.isNode {
 		enc.seqID = enc.seqID | 0x80
@@ -51,12 +52,7 @@ func (enc *encoder) writeTag() {
 }
 
 func (enc *encoder) writeLengthBuf() {
-	// vallen := enc.valBuf.Len()
 	vallen := len(enc.valbuf)
-	if vallen < 0 {
-		panic("length must greater than 0")
-	}
-
 	size := encoding.SizeOfPVarInt32(int32(vallen))
 	codec := encoding.VarCodec{Size: size}
 	tmp := make([]byte, size)
