@@ -56,7 +56,7 @@ func ReadPacket(reader io.Reader) ([]byte, error) {
 	// every batch read 512 bytes, if next reads < 512, read
 	var count int
 	for {
-		batchReadSize := 512
+		batchReadSize := 1024 * 1024
 		var tmpbuf = []byte{}
 		if int(length)-count < batchReadSize {
 			tmpbuf = make([]byte, int(length)-count)
