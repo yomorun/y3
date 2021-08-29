@@ -47,9 +47,7 @@ func TestStreamEncoder3BytesBatch(t *testing.T) {
 	encoder := NewStreamEncoder(0x10)
 
 	//-> 0x11, 0x02, 0x01, 0x02,
-	n11 := NewPrimitivePacketEncoder(0x11)
-	n11.AddBytes([]byte{0x01, 0x02})
-	encoder.AddPacket(n11)
+	encoder.AddPacketBuffer([]byte{0x11, 0x02, 0x01, 0x02})
 
 	// -> 0x12, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05
 	encoder.AddStreamPacket(0x12, len(data), s)
@@ -71,4 +69,29 @@ func TestStreamEncoder3BytesBatch(t *testing.T) {
 		final.Write(buf[:v])
 	}
 	assert.Equal(t, expected, final.Bytes())
+}
+
+func TestStreamEncoderNilReader(t *testing.T) {
+	encoder := NewStreamEncoder(0x10)
+
+	//-> 0x11, 0x02, 0x01, 0x02,
+	encoder.AddPacketBuffer([]byte{0x11, 0x02, 0x01, 0x02})
+
+	assert.EqualValues(t, 0, encoder.GetLen())
+
+	final := new(bytes.Buffer)
+	buf := make([]byte, 3)
+	r := bufio.NewReader(encoder.GetReader())
+	for {
+		v, err := r.Read(buf)
+		t.Logf("-->v=%d, err=%v", v, err)
+		if err != nil {
+			if err == io.EOF {
+				final.Write(buf[:v])
+				break
+			}
+		}
+		final.Write(buf[:v])
+	}
+	assert.Equal(t, []byte(nil), final.Bytes())
 }

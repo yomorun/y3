@@ -17,22 +17,31 @@ type StreamEncoder struct {
 }
 
 func NewStreamEncoder(tag byte) *StreamEncoder {
-	return &StreamEncoder{
+	var se = &StreamEncoder{
 		tag:  tag,
 		buf:  new(bytes.Buffer),
 		pbuf: new(bytes.Buffer),
 	}
+
+	return se
 }
 
 func (se *StreamEncoder) AddPacket(packet *PrimitivePacketEncoder) {
 	node := packet.Encode()
-	se.pbuf.Write(node)
+	se.AddPacketBuffer(node)
+}
+
+func (se *StreamEncoder) AddPacketBuffer(buf []byte) {
+	se.pbuf.Write(buf)
+	se.growLen(len(se.pbuf.Bytes()))
 }
 
 func (se *StreamEncoder) AddStreamPacket(tag byte, length int, reader io.Reader) {
 	se.slen = length
+	// s-Tag
 	se.pbuf.WriteByte(tag)
-	// calculate Len
+	se.growLen(1)
+	// calculate s-Len
 	size := encoding.SizeOfPVarInt32(int32(length))
 	codec := encoding.VarCodec{Size: size}
 	tmp := make([]byte, size)
@@ -41,11 +50,11 @@ func (se *StreamEncoder) AddStreamPacket(tag byte, length int, reader io.Reader)
 		panic(err)
 	}
 	se.pbuf.Write(tmp)
+	se.growLen(size)
 
 	// total buf
 	se.buf.WriteByte(se.tag)
-	// se.len += 1
-	se.len += len(se.pbuf.Bytes()) + length
+	se.growLen(length)
 	// calculate total Len buf
 	size = encoding.SizeOfPVarInt32(int32(se.len))
 	codec = encoding.VarCodec{Size: size}
@@ -56,8 +65,8 @@ func (se *StreamEncoder) AddStreamPacket(tag byte, length int, reader io.Reader)
 	}
 	se.buf.Write(tmp) //lenbuf
 	se.buf.Write(se.pbuf.Bytes())
-	se.len += size
-	se.len += 1
+	se.growLen(size) // total length
+	se.growLen(1)    // parent tag
 
 	se.reader = &yR{
 		buf:    se.buf,
@@ -68,7 +77,10 @@ func (se *StreamEncoder) AddStreamPacket(tag byte, length int, reader io.Reader)
 }
 
 func (se *StreamEncoder) GetReader() io.Reader {
-	return se.reader
+	if se.reader != nil {
+		return se.reader
+	}
+	return new(bytes.Buffer)
 }
 
 // Pipe can pipe data to os.StdOut
@@ -77,7 +89,14 @@ func (se *StreamEncoder) Pipe(writer io.Writer) {
 }
 
 func (se *StreamEncoder) GetLen() int {
-	return se.len
+	if se.reader != nil {
+		return se.len
+	}
+	return 0
+}
+
+func (se *StreamEncoder) growLen(step int) {
+	se.len += step
 }
 
 type yR struct {

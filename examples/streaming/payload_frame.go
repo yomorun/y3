@@ -1,6 +1,8 @@
 package main
 
 import (
+	"io"
+
 	"github.com/yomorun/y3"
 )
 
@@ -10,6 +12,8 @@ import (
 type PayloadFrame struct {
 	Sid      byte
 	Carriage []byte
+	reader   io.Reader
+	length   int
 }
 
 // NewPayloadFrame creates a new PayloadFrame with a given TagID of user's data
@@ -34,6 +38,14 @@ func (m *PayloadFrame) Encode() []byte {
 	payload.AddPrimitivePacket(carriage)
 
 	return payload.Encode()
+}
+
+func (m *PayloadFrame) SetLength(length int) {
+	m.length = length
+}
+
+func (m *PayloadFrame) SetCarriageReader(reader io.Reader) {
+	m.reader = reader
 }
 
 // DecodeToPayloadFrame decodes Y3 encoded bytes to PayloadFrame
