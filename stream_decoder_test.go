@@ -17,23 +17,24 @@ func TestStreamParser(t *testing.T) {
 
 	var i int
 	for {
-		if i > 3 {
+		sp, err := StreamReadPacket(s)
+		if err != nil {
+			assert.Error(t, io.EOF, err)
 			break
 		}
-		sp, err := StreamReadPacket(s)
 		switch i {
 		case 0:
 			assert.NoError(t, err)
-			assert.EqualValues(t, 0x11, sp.GetTag())
-			assert.Equal(t, 3, sp.GetLen())
-			all, err := io.ReadAll(sp.GetValReader())
+			assert.EqualValues(t, 0x11, sp.Tag)
+			assert.Equal(t, 3, sp.Len)
+			all, err := io.ReadAll(sp.Val)
 			assert.NoError(t, err)
 			assert.Equal(t, data[2:5], all)
 		case 1:
 			assert.NoError(t, err)
-			assert.EqualValues(t, 0x12, sp.GetTag())
-			assert.Equal(t, 2, sp.GetLen())
-			all, err := io.ReadAll(sp.GetValReader())
+			assert.EqualValues(t, 0x12, sp.Tag)
+			assert.Equal(t, 2, sp.Len)
+			all, err := io.ReadAll(sp.Val)
 			assert.NoError(t, err)
 			assert.Equal(t, data[7:9], all)
 		default:
@@ -41,4 +42,5 @@ func TestStreamParser(t *testing.T) {
 		}
 		i++
 	}
+	assert.EqualValues(t, 2, i)
 }

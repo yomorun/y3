@@ -9,53 +9,43 @@ import (
 	"github.com/yomorun/y3/encoding"
 )
 
-// streamReader read an Y3 packet from a io.Reader, and return
+// StreamReader read an Y3 packet from a io.Reader, and return
 // the ValReader after decode out Tag and Len
-type streamReader struct {
-	src   io.Reader
-	chTag byte
-	chLen int
-	chVal io.Reader
+type StreamReader struct {
+	src io.Reader
+	// Tag of a y3 packet
+	Tag byte
+	// Len of a y3 packet
+	Len int
+	// Val of a y3 packet
+	Val io.Reader
 }
 
-// NewStreamReader create a new y3 streamReader
-func NewStreamParser(reader io.Reader) *streamReader {
-	return &streamReader{
+// NewStreamReader create a new y3 StreamReader
+func NewStreamParser(reader io.Reader) *StreamReader {
+	return &StreamReader{
 		src: reader,
 	}
 }
 
-// GetTag will block until Tag arrived
-func (sr *streamReader) GetTag() byte {
-	return sr.chTag
-}
-
-// GenLen will block until Len arrived
-func (sr *streamReader) GetLen() int {
-	return sr.chLen
-}
-
-func (sr *streamReader) GetValReader() io.Reader {
-	return sr.chVal
+func (sr *StreamReader) GetValBuffer() ([]byte, error) {
+	buf, err := io.ReadAll(sr.Val)
+	return buf, err
 }
 
 // Do must run in a goroutine
-func (sr *streamReader) Do() error {
+func (sr *StreamReader) Do() error {
 	if sr.src == nil {
 		return errors.New("y3: nil source reader")
 	}
 
 	tag, err := readByte(sr.src)
 	if err != nil {
-		// TODO: determine io.EOF
-		if err == io.EOF {
-
-		}
 		return err
 	}
 
 	// the first byte is y3.Tag
-	sr.chTag = tag
+	sr.Tag = tag
 
 	// read y3.Length bytes, a varint format
 	lenbuf := bytes.Buffer{}
@@ -83,10 +73,10 @@ func (sr *streamReader) Do() error {
 		return fmt.Errorf("y3: streamParse() get lenbuf=(%# x), decode len=(%v)", lenbuf.Bytes(), length)
 	}
 
-	sr.chLen = int(length)
+	sr.Len = int(length)
 
 	// read next {len} bytes as y3.Value
-	sr.chVal = &valR{
+	sr.Val = &valR{
 		length: int(length),
 		src:    sr.src,
 	}
@@ -118,7 +108,7 @@ func (r *valR) Read(p []byte) (n int, err error) {
 	return r.off, err
 }
 
-func StreamReadPacket(reader io.Reader) (*streamReader, error) {
+func StreamReadPacket(reader io.Reader) (*StreamReader, error) {
 	sp := NewStreamParser(reader)
 	err := sp.Do()
 	return sp, err
