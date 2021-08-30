@@ -16,6 +16,8 @@ type PayloadFrame struct {
 	length   int
 }
 
+var _ Frame = &PayloadFrame{}
+
 // NewPayloadFrame creates a new PayloadFrame with a given TagID of user's data
 func NewPayloadFrame(tag byte) *PayloadFrame {
 	return &PayloadFrame{

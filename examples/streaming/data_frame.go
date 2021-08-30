@@ -9,6 +9,8 @@ type DataFrame struct {
 	payloadFrame *PayloadFrame
 }
 
+var _ Frame = &DataFrame{}
+
 // NewDataFrame create `DataFrame` with a transactionID string,
 // consider change transactionID to UUID type later
 func NewDataFrame(transactionID string) *DataFrame {

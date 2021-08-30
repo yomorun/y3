@@ -4,6 +4,13 @@ import (
 	"github.com/yomorun/y3"
 )
 
+// Frame defines frames
+type Frame interface {
+	Encode() []byte
+}
+
+var _ Frame = &MetaFrame{}
+
 // MetaFrame defines the data structure of meta data in a `DataFrame`
 type MetaFrame struct {
 	transactionID string
