@@ -65,7 +65,7 @@ func ReadPacket(reader io.Reader) ([]byte, error) {
 		}
 		p, err := reader.Read(tmpbuf)
 		count += p
-		if err != nil {
+		if err != nil && err != io.EOF {
 			return nil, fmt.Errorf("y3 parse valbuf error: %v", err)
 		}
 		valbuf.Write(tmpbuf[:p])
