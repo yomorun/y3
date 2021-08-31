@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"io"
-	"log"
 
 	"github.com/yomorun/y3/encoding"
 )
@@ -25,31 +24,38 @@ type Packet interface {
 	Size() int
 	Raw() []byte
 	Reader() io.Reader
+	GetValReader() io.Reader
 }
 
 // Packet implementation
 type ChunkPacket struct {
-	t         T
-	l         L
-	valbuf    []byte
-	r         io.Reader
-	chunkMode bool
-	chunkSize int
+	t             T
+	l             L
+	valbuf        []byte
+	r             io.Reader
+	chunkMode     bool
+	chunkSize     int
+	hasChunkChild bool
 }
 
 func (p *ChunkPacket) SeqID() int { return p.t.Sid() }
 
-func (p *ChunkPacket) Size() int { return p.l.Size() }
+// Size of value? or Size of whole packet?
+func (p *ChunkPacket) Size() int { return p.l.len }
 
 func (p *ChunkPacket) Raw() []byte {
-	if p.chunkSize > 0 {
-		return nil
-	}
-
 	buf := new(bytes.Buffer)
 	p.writeTL(buf)
+
+	//if p.chunkSize < 1 {
 	buf.Write(p.valbuf)
+	//}
+
 	return buf.Bytes()
+}
+
+func (p *ChunkPacket) GetValReader() io.Reader {
+	return p.r
 }
 
 func (p *ChunkPacket) Reader() io.Reader {
@@ -59,10 +65,14 @@ func (p *ChunkPacket) Reader() io.Reader {
 
 	buf := new(bytes.Buffer)
 	p.writeTL(buf)
+	// child T/L is in buf
+	lenTL := len(buf.Bytes())
+	buf.Write(p.valbuf)
+
 	return &yR{
 		buf:    buf,
 		src:    p.r,
-		length: p.l.size,
+		length: lenTL + p.l.len,
 		slen:   p.chunkSize,
 	}
 }
@@ -120,7 +130,6 @@ func NewL(len int) (L, error) {
 	}
 	l.buf = make([]byte, l.size)
 	copy(l.buf, tmp)
-	log.Printf("l.buf=%# x, tmp=%# x", l.buf, tmp)
 	l.len = len
 	return l, nil
 }
@@ -130,10 +139,6 @@ func (l L) Raw() []byte {
 }
 
 func (l L) Size() int {
-	return l.size
-}
-
-func (l L) Len() int {
 	return l.len
 }
 
@@ -151,6 +156,7 @@ type Builder struct {
 	done          bool
 	seqID         int
 	isNode        bool
+	hasChunkChild bool
 }
 
 func (b *Builder) Size() int {
@@ -162,8 +168,6 @@ func (b *Builder) generateTag() error {
 	if err != nil {
 		return err
 	}
-	b.valbuf = new(bytes.Buffer)
-	b.nodes = make(map[int]Packet)
 	b.tag = t
 	b.state |= 0x01
 	return nil
@@ -172,6 +176,9 @@ func (b *Builder) generateTag() error {
 func (b *Builder) SetSeqID(seqID int, isNode bool) {
 	b.seqID = seqID
 	b.isNode = isNode
+	// init
+	b.valbuf = new(bytes.Buffer)
+	b.nodes = make(map[int]Packet)
 }
 
 func (b *Builder) generateSize() error {
@@ -216,11 +223,13 @@ func (b *Builder) Packet() (Packet, error) {
 
 	if b.isChunked {
 		return &ChunkPacket{
-			t:         b.tag,
-			l:         *b.len,
-			r:         b.valReader,
-			chunkMode: true,
-			chunkSize: b.valReaderSize,
+			t:             b.tag,
+			l:             *b.len,
+			r:             b.valReader,
+			chunkMode:     true,
+			chunkSize:     b.valReaderSize,
+			valbuf:        b.valbuf.Bytes(),
+			hasChunkChild: true,
 		}, err
 	} else {
 		return &ChunkPacket{
@@ -245,5 +254,13 @@ func (b *Builder) AddPacket(child Packet) error {
 func (b *Builder) AddChunkPacket(child Packet) {
 	b.done = true
 	b.size += int32(child.Size())
-	b.valReader = child.Reader()
+	b.valReader = child.GetValReader()
+	b.valReaderSize = child.Size()
+	b.state |= 0x04
+	b.nodes[child.SeqID()] = child
+	buf := child.Raw()
+	b.size += int32(len(buf))
+	b.valbuf.Write(buf)
+	b.isChunked = true
+	b.hasChunkChild = true
 }

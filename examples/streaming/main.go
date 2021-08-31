@@ -46,13 +46,31 @@ func (m *PayloadFrame) SetCarriage(buf []byte) *PayloadFrame {
 
 // Encode to Y3 encoded bytes
 func (m *PayloadFrame) Encode() []byte {
-	carriage := y3.NewPrimitivePacketEncoder(m.Sid)
-	carriage.SetBytesValue(m.Carriage)
+	return nil
+	/* 	carriage := y3.NewPrimitivePacketEncoder(m.Sid)
+	   	carriage.SetBytesValue(m.Carriage)
 
-	payload := y3.NewNodePacketEncoder(byte(TagOfPayloadFrame))
-	payload.AddPrimitivePacket(carriage)
+	   	payload := y3.NewNodePacketEncoder(byte(TagOfPayloadFrame))
+	   	payload.AddPrimitivePacket(carriage)
 
-	return payload.Encode()
+	   	return payload.Encode() */
+}
+
+func (m *PayloadFrame) Build(r io.Reader, size int) (y3.Packet, error) {
+	var cary y3.Builder
+	cary.SetSeqID(int(m.Sid), false)
+	cary.SetValReader(r, size)
+
+	pktCarriage, err := cary.Packet()
+	if err != nil {
+		return nil, err
+	}
+	//log.Printf("carriage packet buf=%# x, reader=%v\n", pktCarriage.Raw(), pktCarriage.Reader())
+
+	var pl y3.Builder
+	pl.SetSeqID(int(TagOfPayloadFrame), true)
+	pl.AddChunkPacket(pktCarriage)
+	return pl.Packet()
 }
 
 func (m *PayloadFrame) SetLength(length int) {
@@ -218,7 +236,6 @@ func (m *MetaFrame) Build() (y3.Packet, error) {
 	if err != nil {
 		return nil, err
 	}
-	log.Printf("tid packet=%# x\n", pktTransaction.Raw())
 
 	var meta y3.Builder
 	meta.SetSeqID(int(TagOfMetaFrame), true)
@@ -271,10 +288,8 @@ func (o *p) Read(buf []byte) (int, error) {
 
 func main() {
 	var wg sync.WaitGroup
-	//payloadData := []byte{0x01, 0x02, 0x03, 0x04, 0x05}
-	//payloadReader := &p{buf: payloadData, wg: &wg}
-
-	// payloadReader.Write(payloadData)
+	payloadData := []byte{0x01, 0x02, 0x03, 0x04, 0x05}
+	payloadReader := &p{buf: payloadData, wg: &wg}
 
 	// Prepare a DataFrame
 	// DataFrame is combined with a MetaFrame and a PayloadFrame
@@ -287,10 +302,15 @@ func main() {
 		panic(err)
 	}
 
-	fmt.Printf("%# x", meta.Raw())
-	return
+	log.Printf("meta=[%# x]", meta.Raw())
 
-	var r io.Reader
+	plF := NewPayloadFrame(0x22)
+	payload, err := plF.Build(payloadReader, len(payloadData))
+	if err != nil {
+		panic(err)
+	}
+
+	//log.Printf("buf=%# x, reader=%v", payload.Raw(), payload.Reader())
 
 	/* 	// 2. Prepare PayloadFrame
 	   	payload := NewPayloadFrame(tag)
@@ -312,29 +332,45 @@ func main() {
 	// fmt.Printf("err=%v\n", err)
 	// fmt.Printf("buf=%# x\n", buf)
 
-	// method 2: try read from reader
+	tmp := make([]byte, 1)
+	r := payload.Reader()
+	i := 0
 	for {
-		sp, err := y3.StreamReadPacket(r)
+		i++
+		n, err := r.Read(tmp)
+		log.Printf(">>>n=%d, err=%v, reads=[%# x]", n, err, tmp)
 		if err != nil {
-			fmt.Printf("err=%v\n", err)
+			fmt.Println("OVER")
 			break
 		}
-		fmt.Printf(">> tag=%# x\n", sp.Tag)
-		fmt.Printf("length=%d\n", sp.Len)
-		// if sp.Tag == tag {
-		tmp := make([]byte, 1)
+		if n == 0 {
+			panic(0)
+		}
+	}
+	/*
+		// method 2: try read from reader
 		for {
-			n, err := sp.Val.Read(tmp)
+			sp, err := y3.StreamReadPacket(payload.Reader())
 			if err != nil {
-				if err == io.EOF {
-					fmt.Printf("\t-> %# x\n", tmp[:n])
-				}
+				fmt.Printf("err=%v\n", err)
 				break
 			}
-			fmt.Printf("\t-> %# x\n", tmp[:n])
-		}
-		// }
-	}
+			fmt.Printf(">> tag=%# x\n", sp.Tag)
+			fmt.Printf("length=%d\n", sp.Len)
+			// if sp.Tag == tag {
+			tmp := make([]byte, 1)
+			for {
+				n, err := sp.Val.Read(tmp)
+				if err != nil {
+					if err == io.EOF {
+						fmt.Printf("\t-> %# x\n", tmp[:n])
+					}
+					break
+				}
+				fmt.Printf("\t-> %# x\n", tmp[:n])
+			}
+			// }
+		} */
 
 	wg.Wait()
 	fmt.Println("OVER")
