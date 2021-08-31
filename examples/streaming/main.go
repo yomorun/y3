@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"log"
 
 	// "io/ioutil"
 	"sync"
@@ -210,22 +211,17 @@ func (m *MetaFrame) Encode() []byte {
 
 func (m *MetaFrame) Build() (y3.Packet, error) {
 	var tid y3.Builder
-	err := tid.SetSeqID(int(TagOfTransactionID), false)
-	if err != nil {
-		return nil, err
-	}
+	tid.SetSeqID(int(TagOfTransactionID), false)
 	tid.AddValBytes([]byte(m.transactionID))
 
 	pktTransaction, err := tid.Packet()
 	if err != nil {
 		return nil, err
 	}
+	log.Printf("tid packet=%# x\n", pktTransaction.Raw())
 
 	var meta y3.Builder
-	err = meta.SetSeqID(int(TagOfMetaFrame), true)
-	if err != nil {
-		return nil, err
-	}
+	meta.SetSeqID(int(TagOfMetaFrame), true)
 
 	meta.AddPacket(pktTransaction)
 	return meta.Packet()
@@ -275,33 +271,41 @@ func (o *p) Read(buf []byte) (int, error) {
 
 func main() {
 	var wg sync.WaitGroup
-	payloadData := []byte{0x01, 0x02, 0x03, 0x04, 0x05}
-	payloadReader := &p{buf: payloadData, wg: &wg}
+	//payloadData := []byte{0x01, 0x02, 0x03, 0x04, 0x05}
+	//payloadReader := &p{buf: payloadData, wg: &wg}
+
 	// payloadReader.Write(payloadData)
+
 	// Prepare a DataFrame
 	// DataFrame is combined with a MetaFrame and a PayloadFrame
 	// 1. Prepare MetaFrame
 	transactionID := "yomo"
-	var tag byte = 0x01
+	//var tag byte = 0x01
 	metaF := NewMetaFrame(transactionID)
 	meta, err := metaF.Build()
 	if err != nil {
 		panic(err)
 	}
 
-	// 2. Prepare PayloadFrame
-	payload := NewPayloadFrame(tag)
-	payload.SetLength(len(payloadData))
-	payload.SetCarriageReader(payloadReader)
-	// 3. combine to DataFrame
-	enc := y3.NewStreamEncoder(TagOfDataFrame)
-	enc.AddPacketBuffer(meta.Raw())
-	// enc.AddStreamPacket(tag, len(payloadData), payloadReader)
-	enc.AddStreamPacket(payload.Sid, payload.length, payload.reader)
+	fmt.Printf("%# x", meta.Raw())
+	return
 
-	// try read
-	fmt.Printf("length=%d\n", enc.GetLen())
-	r := enc.GetReader()
+	var r io.Reader
+
+	/* 	// 2. Prepare PayloadFrame
+	   	payload := NewPayloadFrame(tag)
+	   	payload.SetLength(len(payloadData))
+	   	payload.SetCarriageReader(payloadReader)
+	   	// 3. combine to DataFrame
+	   	enc := y3.NewStreamEncoder(TagOfDataFrame)
+	   	enc.AddPacketBuffer(meta.Raw())
+	   	// enc.AddStreamPacket(tag, len(payloadData), payloadReader)
+	   	enc.AddStreamPacket(payload.Sid, payload.length, payload.reader)
+
+	   	// try read
+	   	fmt.Printf("length=%d\n", enc.GetLen())
+	   	r := enc.GetReader()
+	*/
 
 	// // method 1: try read all
 	// buf, err := ioutil.ReadAll(r)

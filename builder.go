@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"log"
 
 	"github.com/yomorun/y3/encoding"
 )
@@ -28,19 +29,48 @@ type Packet interface {
 
 // Packet implementation
 type ChunkPacket struct {
-	t      T
-	l      L
-	valbuf []byte
-	r      io.Reader
+	t         T
+	l         L
+	valbuf    []byte
+	r         io.Reader
+	chunkMode bool
+	chunkSize int
 }
 
 func (p *ChunkPacket) SeqID() int { return p.t.Sid() }
 
 func (p *ChunkPacket) Size() int { return p.l.Size() }
 
-func (p *ChunkPacket) Raw() []byte { return p.valbuf }
+func (p *ChunkPacket) Raw() []byte {
+	if p.chunkSize > 0 {
+		return nil
+	}
 
-func (p *ChunkPacket) Reader() io.Reader { return p.r }
+	buf := new(bytes.Buffer)
+	p.writeTL(buf)
+	buf.Write(p.valbuf)
+	return buf.Bytes()
+}
+
+func (p *ChunkPacket) Reader() io.Reader {
+	if p.chunkSize <= 0 {
+		return nil
+	}
+
+	buf := new(bytes.Buffer)
+	p.writeTL(buf)
+	return &yR{
+		buf:    buf,
+		src:    p.r,
+		length: p.l.size,
+		slen:   p.chunkSize,
+	}
+}
+
+func (p *ChunkPacket) writeTL(buf *bytes.Buffer) {
+	buf.Write(p.t.Raw())
+	buf.Write(p.l.Raw())
+}
 
 var _ Packet = &ChunkPacket{}
 
@@ -63,7 +93,7 @@ func (t T) Sid() int {
 	return int(t & wipeFlagBits)
 }
 
-func (t T) Bytes() []byte {
+func (t T) Raw() []byte {
 	return []byte{byte(t)}
 }
 
@@ -71,6 +101,7 @@ func (t T) Bytes() []byte {
 type L struct {
 	buf  []byte
 	size int
+	len  int
 }
 
 func NewL(len int) (L, error) {
@@ -79,7 +110,7 @@ func NewL(len int) (L, error) {
 		return l, errors.New("y3.Len: len can't less than -1")
 	}
 
-	var vallen int32
+	vallen := int32(len)
 	l.size = encoding.SizeOfPVarInt32(vallen)
 	codec := encoding.VarCodec{Size: l.size}
 	tmp := make([]byte, l.size)
@@ -87,11 +118,14 @@ func NewL(len int) (L, error) {
 	if err != nil {
 		panic(err)
 	}
+	l.buf = make([]byte, l.size)
 	copy(l.buf, tmp)
+	log.Printf("l.buf=%# x, tmp=%# x", l.buf, tmp)
+	l.len = len
 	return l, nil
 }
 
-func (l L) Bytes() []byte {
+func (l L) Raw() []byte {
 	return l.buf
 }
 
@@ -99,41 +133,49 @@ func (l L) Size() int {
 	return l.size
 }
 
+func (l L) Len() int {
+	return l.len
+}
+
 // Builder
 type Builder struct {
-	tag       T
-	len       *L
-	valReader io.Reader
-	nodes     map[int]Packet
-	state     int
-	size      int32
-	isChunked bool
-	valbuf    *bytes.Buffer
-	done      bool
+	tag           T
+	len           *L
+	valReader     io.Reader
+	valReaderSize int
+	nodes         map[int]Packet
+	state         int
+	size          int32
+	isChunked     bool
+	valbuf        *bytes.Buffer
+	done          bool
+	seqID         int
+	isNode        bool
 }
 
 func (b *Builder) Size() int {
 	return int(b.size)
 }
 
-func (b *Builder) SetSeqID(seqID int, isNode bool) error {
-	t, err := NewT(seqID, isNode)
+func (b *Builder) generateTag() error {
+	t, err := NewT(b.seqID, b.isNode)
 	if err != nil {
 		return err
 	}
-	b.tag = t
-	b.state |= 0x01
 	b.valbuf = new(bytes.Buffer)
 	b.nodes = make(map[int]Packet)
+	b.tag = t
+	b.state |= 0x01
 	return nil
 }
 
-func (b *Builder) SetSize(size int) {
-	b.size = int32(size)
+func (b *Builder) SetSeqID(seqID int, isNode bool) {
+	b.seqID = seqID
+	b.isNode = isNode
 }
 
-func (b *Builder) setLen(length int) error {
-	l, err := NewL(length)
+func (b *Builder) generateSize() error {
+	l, err := NewL(int(b.size))
 	if err != nil {
 		return err
 	}
@@ -142,10 +184,12 @@ func (b *Builder) setLen(length int) error {
 	return nil
 }
 
-func (b *Builder) SetValReader(r io.Reader) {
+func (b *Builder) SetValReader(r io.Reader, size int) {
 	b.isChunked = true
 	b.valReader = r
 	b.state |= 0x04
+	b.size += int32(size)
+	b.valReaderSize = size
 }
 
 func (b *Builder) AddValBytes(buf []byte) {
@@ -156,12 +200,14 @@ func (b *Builder) AddValBytes(buf []byte) {
 }
 
 func (b *Builder) Packet() (Packet, error) {
-	var err error
-	if b.state&0x02 != 0x02 {
-		err = b.setLen(int(b.size))
-		if err != nil {
-			return nil, err
-		}
+	err := b.generateTag()
+	if err != nil {
+		return nil, err
+	}
+
+	err = b.generateSize()
+	if err != nil {
+		return nil, err
 	}
 
 	if b.state != 0x07 {
@@ -170,15 +216,18 @@ func (b *Builder) Packet() (Packet, error) {
 
 	if b.isChunked {
 		return &ChunkPacket{
-			t: b.tag,
-			l: *b.len,
-			r: b.valReader,
+			t:         b.tag,
+			l:         *b.len,
+			r:         b.valReader,
+			chunkMode: true,
+			chunkSize: b.valReaderSize,
 		}, err
 	} else {
 		return &ChunkPacket{
-			t:      b.tag,
-			l:      *b.len,
-			valbuf: b.valbuf.Bytes(),
+			t:         b.tag,
+			l:         *b.len,
+			valbuf:    b.valbuf.Bytes(),
+			chunkMode: false,
 		}, err
 	}
 }
@@ -197,8 +246,4 @@ func (b *Builder) AddChunkPacket(child Packet) {
 	b.done = true
 	b.size += int32(child.Size())
 	b.valReader = child.Reader()
-}
-
-func (b *Builder) Reader() io.Reader {
-	return b.valReader
 }
