@@ -2,7 +2,9 @@ package y3
 
 import (
 	"bytes"
+	"errors"
 	"io"
+	"io/ioutil"
 
 	"github.com/yomorun/y3/encoding"
 )
@@ -135,4 +137,30 @@ func (r *yR) Read(p []byte) (n int, err error) {
 		}
 		return n, nil
 	}
+}
+
+func (r *yR) WriteTo(w io.Writer) (n int64, err error) {
+	if r.src == nil {
+		return 0, nil
+	}
+
+	// first, write existed buffer
+	m, err := w.Write(r.buf.Bytes())
+	if err != nil {
+		return 0, err
+	}
+	n += int64(m)
+
+	// last, write from reader
+	buf, err := ioutil.ReadAll(r.src)
+	if err != nil && err != io.EOF {
+		return 0, errors.New("yR.WriteTo: write from reader error")
+	}
+	m, err = w.Write(buf)
+	if err != nil {
+		return 0, err
+	}
+
+	n += int64(m)
+	return n, nil
 }
