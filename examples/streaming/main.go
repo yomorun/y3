@@ -22,30 +22,101 @@ var (
 	TagOfTransactionID byte = 0x01
 )
 
-type ChunkPayloadFrame struct {
+// MetaFrame defines the Meta data structure in a `DataFrame`, transactionID is
+type MetaFrame struct {
+	transactionID string
+}
+
+var _ Frame = &MetaFrame{}
+
+// NewMetaFrame creates a new MetaFrame with a given transactionID
+func NewMetaFrame(tid string) *MetaFrame {
+	return &MetaFrame{
+		transactionID: tid,
+	}
+}
+
+// TransactionID returns the transactionID of the MetaFrame
+func (m *MetaFrame) TransactionID() string {
+	return m.transactionID
+}
+
+// Encode returns Y3 encoded bytes of the MetaFrame
+func (m *MetaFrame) Encode() []byte {
+	panic("not implemented")
+}
+
+// Build returns a Y3 Packet
+func (m *MetaFrame) Build() (y3.Packet, error) {
+	var tid y3.Builder
+	tid.SetSeqID(int(TagOfTransactionID), false)
+	tid.AddValBytes([]byte(m.transactionID))
+
+	pktTransaction, err := tid.Packet()
+	if err != nil {
+		return nil, err
+	}
+
+	var meta y3.Builder
+	meta.SetSeqID(int(TagOfMetaFrame), true)
+	meta.AddPacket(pktTransaction)
+
+	return meta.Packet()
+}
+
+// DecodeToMetaFrame decodes Y3 encoded bytes to a MetaFrame
+func DecodeToMetaFrame(buf []byte) (*MetaFrame, error) {
+	packet := &y3.NodePacket{}
+	_, err := y3.DecodeToNodePacket(buf, packet)
+
+	if err != nil {
+		return nil, err
+	}
+
+	var tid string
+	if s, ok := packet.PrimitivePackets[0x01]; ok {
+		tid, err = s.ToUTF8String()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	meta := &MetaFrame{
+		transactionID: tid,
+	}
+	return meta, nil
+}
+
+// ChunkedPayloadFrame represents a Payload with chunked carriage data.
+type ChunkedPayloadFrame struct {
 	sid            byte
 	carriageReader io.Reader
 	carriageSize   int
 }
 
-var _ Frame = &ChunkPayloadFrame{}
+var _ Frame = &ChunkedPayloadFrame{}
 
-func NewChunkPayloadFrame(seqID byte) *ChunkPayloadFrame {
-	return &ChunkPayloadFrame{
+// NewChunkedPayloadFrame create a ChunkedPayloadFrame
+func NewChunkedPayloadFrame(seqID byte) *ChunkedPayloadFrame {
+	return &ChunkedPayloadFrame{
 		sid: seqID,
 	}
 }
 
-func (cp *ChunkPayloadFrame) Encode() []byte {
-	return nil
+// Encode returns y3 encoded raw bytes
+func (cp *ChunkedPayloadFrame) Encode() []byte {
+	panic("not implemented")
 }
 
-func (cp *ChunkPayloadFrame) SetCarriageReader(r io.Reader, size int) {
+// SetCarriageReader set the V of a y3 packet as a io.Reader, and provide the
+// size of V.
+func (cp *ChunkedPayloadFrame) SetCarriageReader(r io.Reader, size int) {
 	cp.carriageReader = r
 	cp.carriageSize = size
 }
 
-func (cp *ChunkPayloadFrame) Build() (y3.Packet, error) {
+// Build returns a y3 Packet
+func (cp *ChunkedPayloadFrame) Build() (y3.Packet, error) {
 	var cary y3.Builder
 	cary.SetSeqID(int(cp.sid), false)
 	cary.SetValReader(cp.carriageReader, cp.carriageSize)
@@ -61,26 +132,25 @@ func (cp *ChunkPayloadFrame) Build() (y3.Packet, error) {
 	return pl.Packet()
 }
 
-func (cp *ChunkPayloadFrame) IsChunked() bool {
+// IsChunked returns a bool value indicates if this Frame is chunked.
+func (cp *ChunkedPayloadFrame) IsChunked() bool {
 	return true
 }
 
-// PayloadFrame is a Y3 encoded bytes, Tag is a fixed value TYPE_ID_PAYLOAD_FRAME
-// the Len is the length of Val. Val is also a Y3 encoded PrimitivePacket, storing
-// raw bytes as user's data
+// PayloadFrame represents Payload in Y3 encoded bytes, seqID is a fixed value
+// with TYPE_ID_PAYLOAD_FRAME, when carriage is small, this Frame is not memory
+// efficiency but easy for use.
 type PayloadFrame struct {
 	Sid      byte
 	Carriage []byte
-	reader   io.Reader
-	length   int
 }
 
 var _ Frame = &PayloadFrame{}
 
 // NewPayloadFrame creates a new PayloadFrame with a given TagID of user's data
-func NewPayloadFrame(tag byte) *PayloadFrame {
+func NewPayloadFrame(seqID byte) *PayloadFrame {
 	return &PayloadFrame{
-		Sid: tag,
+		Sid: seqID,
 	}
 }
 
@@ -91,13 +161,13 @@ func (m *PayloadFrame) SetCarriage(buf []byte) {
 
 // Encode to Y3 encoded bytes
 func (m *PayloadFrame) Encode() []byte {
-	return nil
+	panic("not implemented")
 }
 
-func (m *PayloadFrame) Build(r io.Reader, size int) (y3.Packet, error) {
+func (m *PayloadFrame) Build() (y3.Packet, error) {
 	var cary y3.Builder
 	cary.SetSeqID(int(m.Sid), false)
-	cary.SetValReader(r, size)
+	cary.AddValBytes(m.Carriage)
 
 	pktCarriage, err := cary.Packet()
 	if err != nil {
@@ -106,16 +176,8 @@ func (m *PayloadFrame) Build(r io.Reader, size int) (y3.Packet, error) {
 
 	var pl y3.Builder
 	pl.SetSeqID(int(TagOfPayloadFrame), true)
-	pl.AddChunkPacket(pktCarriage)
+	pl.AddPacket(pktCarriage)
 	return pl.Packet()
-}
-
-// func (m *PayloadFrame) SetLength(length int) {
-// 	m.length = length
-// }
-
-func (m *PayloadFrame) SetCarriageReader(reader io.Reader, size int) {
-	m.reader = reader
 }
 
 // DecodeToPayloadFrame decodes Y3 encoded bytes to PayloadFrame
@@ -165,8 +227,27 @@ func (d *DataFrame) SetCarriage(sid byte, carriage []byte) {
 	d.payloadFrame.SetCarriage(carriage)
 }
 
+func (d *DataFrame) Build() (y3.Packet, error) {
+	meta, err := d.metaFrame.Build()
+	if err != nil {
+		return nil, err
+	}
+
+	payload, err := d.payloadFrame.Build()
+	if err != nil {
+		return nil, err
+	}
+
+	var b y3.Builder
+	b.SetSeqID(int(TagOfDataFrame), true)
+	b.AddPacket(meta)
+	b.AddPacket(payload)
+
+	return b.Packet()
+}
+
 // GetCarriage return user's raw data in `DataFrame`
-func (d *DataFrame) GetCarriage() []byte {
+func (d *DataFrame) Carriage() []byte {
 	return d.payloadFrame.Carriage
 }
 
@@ -176,19 +257,13 @@ func (d *DataFrame) TransactionID() string {
 }
 
 // GetDataTagID return the Tag of user's data
-func (d *DataFrame) GetDataTagID() byte {
+func (d *DataFrame) CarriageSeqID() byte {
 	return d.payloadFrame.Sid
 }
 
 // Encode return Y3 encoded bytes of `DataFrame`
 func (d *DataFrame) Encode() []byte {
-	data := y3.NewNodePacketEncoder(byte(d.Type()))
-	// MetaFrame
-	data.AddBytes(d.metaFrame.Encode())
-	// PayloadFrame
-	data.AddBytes(d.payloadFrame.Encode())
-
-	return data.Encode()
+	panic("not implemented")
 }
 
 // DecodeToDataFrame decode Y3 encoded bytes to `DataFrame`
@@ -220,86 +295,7 @@ func DecodeToDataFrame(buf []byte) (*DataFrame, error) {
 	return data, nil
 }
 
-// NewMetaFrame creates a new MetaFrame with a given transactionID
-func NewMetaFrame(tid string) *MetaFrame {
-	return &MetaFrame{
-		transactionID: tid,
-	}
-}
-
-var _ Frame = &MetaFrame{}
-
-// MetaFrame defines the data structure of meta data in a `DataFrame`
-type MetaFrame struct {
-	transactionID string
-}
-
-// TransactionID returns the transactionID of the MetaFrame
-func (m *MetaFrame) TransactionID() string {
-	return m.transactionID
-}
-
-// Encode returns Y3 encoded bytes of the MetaFrame
-//func (m *MetaFrame) Encode() []byte {
-//	metaNode := y3.NewNodePacketEncoder(byte(TagOfMetaFrame))
-//	// TransactionID string
-//	tidPacket := y3.NewPrimitivePacketEncoder(byte(TagOfTransactionID))
-//	tidPacket.SetStringValue(m.transactionID)
-//	// add TransactionID to MetaFrame
-//	metaNode.AddPrimitivePacket(tidPacket)
-//
-//	return metaNode.Encode()
-//}
-
-// Encode returns Y3 encoded bytes of the MetaFrame
-func (m *MetaFrame) Encode() []byte {
-	p, err := m.Build()
-	if err != nil {
-		return nil
-	}
-	return p.Raw()
-}
-
-func (m *MetaFrame) Build() (y3.Packet, error) {
-	var tid y3.Builder
-	tid.SetSeqID(int(TagOfTransactionID), false)
-	tid.AddValBytes([]byte(m.transactionID))
-
-	pktTransaction, err := tid.Packet()
-	if err != nil {
-		return nil, err
-	}
-
-	var meta y3.Builder
-	meta.SetSeqID(int(TagOfMetaFrame), true)
-
-	meta.AddPacket(pktTransaction)
-	return meta.Packet()
-}
-
-// DecodeToMetaFrame decodes Y3 encoded bytes to a MetaFrame
-func DecodeToMetaFrame(buf []byte) (*MetaFrame, error) {
-	packet := &y3.NodePacket{}
-	_, err := y3.DecodeToNodePacket(buf, packet)
-
-	if err != nil {
-		return nil, err
-	}
-
-	var tid string
-	if s, ok := packet.PrimitivePackets[0x01]; ok {
-		tid, err = s.ToUTF8String()
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	meta := &MetaFrame{
-		transactionID: tid,
-	}
-	return meta, nil
-}
-
+// Test process
 type p struct {
 	buf      []byte
 	lastRead int
@@ -320,11 +316,9 @@ func main() {
 	payloadData := []byte{0x01, 0x02, 0x03, 0x04, 0x05}
 	payloadReader := &p{buf: payloadData}
 
-	// Prepare a DataFrame
-	// DataFrame is combined with a MetaFrame and a PayloadFrame
+	// Prepare a DataFrame, a DataFrame is combined with a MetaFrame and a PayloadFrame
 	// 1. Prepare MetaFrame
 	transactionID := "yomo"
-	//var tag byte = 0x01
 	metaF := NewMetaFrame(transactionID)
 	meta, err := metaF.Build()
 	if err != nil {
@@ -333,38 +327,27 @@ func main() {
 
 	log.Printf("meta=[%# x]", meta.Raw())
 
-	plF := NewChunkPayloadFrame(0x22)
+	// 2. Prepare PayloadFrame
+	plF := NewChunkedPayloadFrame(0x22)
 	plF.SetCarriageReader(payloadReader, len(payloadData))
 	payload, err := plF.Build()
 	if err != nil {
 		panic(err)
 	}
 
-	//log.Printf("buf=%# x, reader=%v", payload.Raw(), payload.Reader())
-
-	/* 	// 2. Prepare PayloadFrame
-	   	payload := NewPayloadFrame(tag)
-	   	payload.SetLength(len(payloadData))
-	   	payload.SetCarriageReader(payloadReader)
-	   	// 3. combine to DataFrame
-	   	enc := y3.NewStreamEncoder(TagOfDataFrame)
-	   	enc.AddPacketBuffer(meta.Raw())
-	   	// enc.AddStreamPacket(tag, len(payloadData), payloadReader)
-	   	enc.AddStreamPacket(payload.Sid, payload.length, payload.reader)
-
-	   	// try read
-	   	fmt.Printf("length=%d\n", enc.GetLen())
-	   	r := enc.GetReader()
-	*/
-
-	// // method 1: try read all
-	// buf, err := ioutil.ReadAll(r)
-	// fmt.Printf("err=%v\n", err)
-	// fmt.Printf("buf=%# x\n", buf)
-
 	buf := &bytes.Buffer{}
 	io.Copy(buf, payload.Reader())
 	log.Printf("buf=[%# x]", buf)
+
+	// 3. Prepare DataFrame
+	var dataSeqID byte = 0x30
+	df := NewDataFrame(transactionID)
+	df.SetCarriage(dataSeqID, payloadData)
+	data, err := df.Build()
+	if err != nil {
+		panic(err)
+	}
+	log.Printf("data=[%# x]", data.Raw())
 
 	fmt.Println("OVER")
 }
