@@ -128,7 +128,7 @@ func (cp *ChunkedPayloadFrame) Build() (y3.Packet, error) {
 
 	var pl y3.Builder
 	pl.SetSeqID(int(TagOfPayloadFrame), true)
-	pl.AddChunkPacket(pktCarriage)
+	pl.AddStreamPacket(pktCarriage)
 	return pl.Packet()
 }
 
@@ -201,8 +201,10 @@ func DecodeToPayloadFrame(buf []byte) (*PayloadFrame, error) {
 // DataFrame defines the data structure carried with user's data
 // when transfering within YoMo
 type DataFrame struct {
-	metaFrame    *MetaFrame
-	payloadFrame *PayloadFrame
+	metaFrame           *MetaFrame
+	payloadFrame        *PayloadFrame
+	chunkedPayloadFrame *ChunkedPayloadFrame
+	isChunked           bool
 }
 
 var _ Frame = &DataFrame{}
@@ -225,6 +227,13 @@ func (d *DataFrame) Type() byte {
 func (d *DataFrame) SetCarriage(sid byte, carriage []byte) {
 	d.payloadFrame = NewPayloadFrame(sid)
 	d.payloadFrame.SetCarriage(carriage)
+	d.isChunked = false
+}
+
+func (d *DataFrame) SetCarriageReader(sid byte, r io.Reader, size int) {
+	d.chunkedPayloadFrame = NewChunkedPayloadFrame(sid)
+	d.chunkedPayloadFrame.SetCarriageReader(r, size)
+	d.isChunked = true
 }
 
 func (d *DataFrame) Build() (y3.Packet, error) {
@@ -233,7 +242,13 @@ func (d *DataFrame) Build() (y3.Packet, error) {
 		return nil, err
 	}
 
-	payload, err := d.payloadFrame.Build()
+	var payload y3.Packet
+	if d.isChunked {
+		payload, err = d.chunkedPayloadFrame.Build()
+	} else {
+		payload, err = d.payloadFrame.Build()
+	}
+
 	if err != nil {
 		return nil, err
 	}
@@ -241,7 +256,11 @@ func (d *DataFrame) Build() (y3.Packet, error) {
 	var b y3.Builder
 	b.SetSeqID(int(TagOfDataFrame), true)
 	b.AddPacket(meta)
-	b.AddPacket(payload)
+	if d.isChunked {
+		b.AddStreamPacket(payload)
+	} else {
+		b.AddPacket(payload)
+	}
 
 	return b.Packet()
 }
@@ -313,41 +332,47 @@ func (o *p) Read(buf []byte) (int, error) {
 }
 
 func main() {
+	log.Println(">>> Start: Emit data ---")
+	emit()
+
+	log.Println(">>> Start: Emit data in Chunked Mode ---")
+	emitInChunkedMode()
+
+	fmt.Println("OVER")
+}
+
+func emit() {
 	payloadData := []byte{0x01, 0x02, 0x03, 0x04, 0x05}
-	payloadReader := &p{buf: payloadData}
 
-	// Prepare a DataFrame, a DataFrame is combined with a MetaFrame and a PayloadFrame
-	// 1. Prepare MetaFrame
 	transactionID := "yomo"
-	metaF := NewMetaFrame(transactionID)
-	meta, err := metaF.Build()
-	if err != nil {
-		panic(err)
-	}
-
-	log.Printf("meta=[%# x]", meta.Raw())
-
-	// 2. Prepare PayloadFrame
-	plF := NewChunkedPayloadFrame(0x22)
-	plF.SetCarriageReader(payloadReader, len(payloadData))
-	payload, err := plF.Build()
-	if err != nil {
-		panic(err)
-	}
-
-	buf := &bytes.Buffer{}
-	io.Copy(buf, payload.Reader())
-	log.Printf("buf=[%# x]", buf)
-
-	// 3. Prepare DataFrame
 	var dataSeqID byte = 0x30
+
+	// Prepare DataFrame
 	df := NewDataFrame(transactionID)
 	df.SetCarriage(dataSeqID, payloadData)
 	data, err := df.Build()
 	if err != nil {
 		panic(err)
 	}
-	log.Printf("data=[%# x]", data.Raw())
+	log.Printf("DONE, total buf=[%# x]\n\n", data.Raw())
+}
 
-	fmt.Println("OVER")
+func emitInChunkedMode() {
+	payloadData := []byte{0x01, 0x02, 0x03, 0x04, 0x05}
+	payloadReader := &p{buf: payloadData}
+
+	transactionID := "yomo"
+	var dataSeqID byte = 0x30
+
+	// Prepare DataFrame
+	df := NewDataFrame(transactionID)
+	// df.SetCarriage(dataSeqID, payloadData)
+	df.SetCarriageReader(dataSeqID, payloadReader, len(payloadData))
+	data, err := df.Build()
+	if err != nil {
+		panic(err)
+	}
+	buf := &bytes.Buffer{}
+	io.Copy(buf, data.Reader())
+	log.Printf("DONE, total buf=[%# x]", buf)
 }

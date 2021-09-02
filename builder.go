@@ -20,15 +20,22 @@ var (
 
 // Packet
 type Packet interface {
+	// SeqID returns the sequence ID of this packet.
 	SeqID() int
+	// Size returns the size of whole packet.
 	Size() int
+	// VSize returns the size of V.
+	VSize() int
+	// Raw returns the whole bytes.
 	Raw() []byte
+	// Reader returns an io.Reader which returns who bytes.
 	Reader() io.Reader
+	// GetValReader returns an io.Reader which holds V.
 	GetValReader() io.Reader
 }
 
 // Packet implementation
-type ChunkPacket struct {
+type StreamPacket struct {
 	t             T
 	l             L
 	valbuf        []byte
@@ -38,12 +45,18 @@ type ChunkPacket struct {
 	hasChunkChild bool
 }
 
-func (p *ChunkPacket) SeqID() int { return p.t.Sid() }
+func (p *StreamPacket) SeqID() int { return p.t.Sid() }
 
-// Size of value? or Size of whole packet?
-func (p *ChunkPacket) Size() int { return p.l.len }
+// Size returns the size of whole packet.
+func (p *StreamPacket) Size() int {
+	// T.Size() + L.Size() + V.Size()
+	return p.t.Size() + p.l.Size() + p.l.len
+}
 
-func (p *ChunkPacket) Raw() []byte {
+// VSize returns the size of V.
+func (p *StreamPacket) VSize() int { return p.l.len }
+
+func (p *StreamPacket) Raw() []byte {
 	buf := new(bytes.Buffer)
 	p.writeTL(buf)
 
@@ -54,11 +67,11 @@ func (p *ChunkPacket) Raw() []byte {
 	return buf.Bytes()
 }
 
-func (p *ChunkPacket) GetValReader() io.Reader {
+func (p *StreamPacket) GetValReader() io.Reader {
 	return p.r
 }
 
-func (p *ChunkPacket) Reader() io.Reader {
+func (p *StreamPacket) Reader() io.Reader {
 	if p.chunkSize <= 0 {
 		return nil
 	}
@@ -77,12 +90,12 @@ func (p *ChunkPacket) Reader() io.Reader {
 	}
 }
 
-func (p *ChunkPacket) writeTL(buf *bytes.Buffer) {
+func (p *StreamPacket) writeTL(buf *bytes.Buffer) {
 	buf.Write(p.t.Raw())
 	buf.Write(p.l.Raw())
 }
 
-var _ Packet = &ChunkPacket{}
+var _ Packet = &StreamPacket{}
 
 // TLV_T
 type T byte
@@ -105,6 +118,14 @@ func (t T) Sid() int {
 
 func (t T) Raw() []byte {
 	return []byte{byte(t)}
+}
+
+func (t T) IsNode() bool {
+	return t&flagBitNode == flagBitNode
+}
+
+func (t T) Size() int {
+	return 1
 }
 
 // TLV_L
@@ -138,7 +159,13 @@ func (l L) Raw() []byte {
 	return l.buf
 }
 
+// Size returns how many bytes used to represent this L
 func (l L) Size() int {
+	return l.size
+}
+
+// Value returns the value this L represents
+func (l L) Value() int {
 	return l.len
 }
 
@@ -150,7 +177,7 @@ type Builder struct {
 	valReaderSize int
 	nodes         map[int]Packet
 	state         int
-	size          int32
+	size          int32 // size of value
 	isChunked     bool
 	valbuf        *bytes.Buffer
 	done          bool
@@ -159,6 +186,7 @@ type Builder struct {
 	hasChunkChild bool
 }
 
+// Size returns the size of V.
 func (b *Builder) Size() int {
 	return int(b.size)
 }
@@ -173,6 +201,8 @@ func (b *Builder) generateTag() error {
 	return nil
 }
 
+// SetSeqID set sequence ID of a y3 packet.
+// isNode
 func (b *Builder) SetSeqID(seqID int, isNode bool) {
 	b.seqID = seqID
 	b.isNode = isNode
@@ -222,7 +252,7 @@ func (b *Builder) Packet() (Packet, error) {
 	}
 
 	if b.isChunked {
-		return &ChunkPacket{
+		return &StreamPacket{
 			t:             b.tag,
 			l:             *b.len,
 			r:             b.valReader,
@@ -232,7 +262,7 @@ func (b *Builder) Packet() (Packet, error) {
 			hasChunkChild: true,
 		}, err
 	} else {
-		return &ChunkPacket{
+		return &StreamPacket{
 			t:         b.tag,
 			l:         *b.len,
 			valbuf:    b.valbuf.Bytes(),
@@ -243,7 +273,7 @@ func (b *Builder) Packet() (Packet, error) {
 
 func (b *Builder) AddPacket(child Packet) error {
 	if b.done {
-		return errors.New("y3.Builder: can not add Packet after ChunkPacket")
+		return errors.New("y3.Builder: can not add Packet after StreamPacket")
 	}
 	b.nodes[child.SeqID()] = child
 	buf := child.Raw()
@@ -251,15 +281,16 @@ func (b *Builder) AddPacket(child Packet) error {
 	return nil
 }
 
-func (b *Builder) AddChunkPacket(child Packet) {
+func (b *Builder) AddStreamPacket(child Packet) {
 	b.done = true
-	b.size += int32(child.Size())
 	b.valReader = child.GetValReader()
-	b.valReaderSize = child.Size()
+	b.valReaderSize = child.VSize()
 	b.state |= 0x04
 	b.nodes[child.SeqID()] = child
+	// add V size
+	b.size += int32(child.Size())
+	// append the bytes of child
 	buf := child.Raw()
-	b.size += int32(len(buf))
 	b.valbuf.Write(buf)
 	b.isChunked = true
 	b.hasChunkChild = true
