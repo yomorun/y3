@@ -15,6 +15,128 @@ type Frame interface {
 	Encode() []byte
 }
 
+func ReadChunkedDataFrame(d *y3.Decoder) (*DataFrame, error) {
+	// 1. decoding MetaFrame
+	metaFrame, err := ReadMetaFrame(d)
+	if err != nil {
+		return nil, err
+	}
+	// 2. decoding PayloadFrame in chunked mode
+	payloadFrame, err := ReadChunkedPayloadFrame(d)
+	if err != nil {
+		return nil, err
+	}
+
+	// d.SetChunkedDataReader(payloadFrame.CarriageReader())
+	p := d.GetChunkedPacket()
+
+	return &DataFrame{
+		metaFrame:           metaFrame,
+		isChunked:           true,
+		chunkedPayloadFrame: payloadFrame,
+		rd:                  p.Reader(),
+		chunkedSize:         payloadFrame.carriageSize,
+	}, nil
+}
+
+// decoding PayloadFrame in chunked mode
+func ReadChunkedPayloadFrame(dec *y3.Decoder) (*ChunkedPayloadFrame, error) {
+	d := y3.NewDecoder(dec.UnderlyingReader())
+	err := d.ReadHeader()
+	if err != nil {
+		return nil, err
+	}
+	cplPacket := d.GetChunkedPacket()
+
+	// decoding carriage of PayloadFrame
+	caryDec := y3.NewDecoder(cplPacket.VReader())
+	err = caryDec.ReadHeader()
+	if err != nil {
+		return nil, err
+	}
+	caryPacket := caryDec.GetChunkedPacket()
+	return &ChunkedPayloadFrame{
+		sid:            byte(caryPacket.SeqID()),
+		carriageSize:   caryPacket.VSize(),
+		carriageReader: caryPacket.VReader(),
+	}, nil
+}
+
+func ReadDataFrame(d *y3.Decoder) (*DataFrame, error) {
+	// 1. decoding MetaFrame
+	metaFrame, err := ReadMetaFrame(d)
+	if err != nil {
+		return nil, err
+	}
+	// 2. decoding PayloadFrame in fullfilled mode
+	payloadFrame, err := ReadPayloadFrame(d)
+	if err != nil {
+		return nil, err
+	}
+
+	return &DataFrame{
+		metaFrame:    metaFrame,
+		isChunked:    false,
+		payloadFrame: payloadFrame,
+	}, nil
+}
+
+func ReadPayloadFrame(dec *y3.Decoder) (*PayloadFrame, error) {
+	d := y3.NewDecoder(dec.UnderlyingReader())
+	err := d.ReadHeader()
+	if err != nil {
+		return nil, err
+	}
+	plPacket, err := d.GetFullfilledPacket()
+	if err != nil {
+		return nil, err
+	}
+
+	// decode Carriage from this packet
+	var caryDec = y3.NewDecoder(plPacket.VReader())
+	err = caryDec.ReadHeader()
+	if err != nil {
+		return nil, err
+	}
+	caryPacket, err := caryDec.GetFullfilledPacket()
+	if err != nil {
+		return nil, err
+	}
+
+	return &PayloadFrame{
+		Sid:      byte(caryPacket.SeqID()),
+		Carriage: caryPacket.BytesV(),
+	}, nil
+}
+
+func ReadMetaFrame(dec *y3.Decoder) (*MetaFrame, error) {
+	d := y3.NewDecoder(dec.UnderlyingReader())
+	err := d.ReadHeader()
+	if err != nil {
+		return nil, err
+	}
+	metaPacket, err := d.GetFullfilledPacket()
+	if err != nil {
+		return nil, err
+	}
+
+	// decode Transaction from this packet
+	var tidDec = y3.NewDecoder(metaPacket.VReader())
+	err = tidDec.ReadHeader()
+	if err != nil {
+		return nil, err
+	}
+	tidPacket, err := tidDec.GetFullfilledPacket()
+	if err != nil {
+		return nil, err
+	}
+
+	meta := &MetaFrame{
+		transactionID: tidPacket.UTF8StringV(),
+	}
+	return meta, nil
+}
+
 var (
 	TagOfDataFrame     byte = 0x3F
 	TagOfMetaFrame     byte = 0x2F
@@ -48,16 +170,17 @@ func (m *MetaFrame) Encode() []byte {
 
 // Build returns a Y3 Packet
 func (m *MetaFrame) Build() (y3.Packet, error) {
-	var tid y3.Builder
+	var tid y3.Encoder
 	tid.SetSeqID(int(TagOfTransactionID), false)
-	tid.AddValBytes([]byte(m.transactionID))
+	// tid.SetBytesV([]byte(m.transactionID))
+	tid.SetUTF8StringV(m.transactionID)
 
 	pktTransaction, err := tid.Packet()
 	if err != nil {
 		return nil, err
 	}
 
-	var meta y3.Builder
+	var meta y3.Encoder
 	meta.SetSeqID(int(TagOfMetaFrame), true)
 	meta.AddPacket(pktTransaction)
 
@@ -65,27 +188,7 @@ func (m *MetaFrame) Build() (y3.Packet, error) {
 }
 
 // DecodeToMetaFrame decodes Y3 encoded bytes to a MetaFrame
-func DecodeToMetaFrame(buf []byte) (*MetaFrame, error) {
-	packet := &y3.NodePacket{}
-	_, err := y3.DecodeToNodePacket(buf, packet)
-
-	if err != nil {
-		return nil, err
-	}
-
-	var tid string
-	if s, ok := packet.PrimitivePackets[0x01]; ok {
-		tid, err = s.ToUTF8String()
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	meta := &MetaFrame{
-		transactionID: tid,
-	}
-	return meta, nil
-}
+func DecodeToMetaFrame(r []byte) (*MetaFrame, error) { return nil, nil }
 
 // ChunkedPayloadFrame represents a Payload with chunked carriage data.
 type ChunkedPayloadFrame struct {
@@ -115,18 +218,23 @@ func (cp *ChunkedPayloadFrame) SetCarriageReader(r io.Reader, size int) {
 	cp.carriageSize = size
 }
 
+// CarriageReader returns the V of y3 packet as io.Reader
+func (cp *ChunkedPayloadFrame) CarriageReader() io.Reader {
+	return cp.carriageReader
+}
+
 // Build returns a y3 Packet
 func (cp *ChunkedPayloadFrame) Build() (y3.Packet, error) {
-	var cary y3.Builder
+	var cary y3.Encoder
 	cary.SetSeqID(int(cp.sid), false)
-	cary.SetValReader(cp.carriageReader, cp.carriageSize)
+	cary.SetReaderV(cp.carriageReader, cp.carriageSize)
 
 	pktCarriage, err := cary.Packet()
 	if err != nil {
 		return nil, err
 	}
 
-	var pl y3.Builder
+	var pl y3.Encoder
 	pl.SetSeqID(int(TagOfPayloadFrame), true)
 	pl.AddStreamPacket(pktCarriage)
 	return pl.Packet()
@@ -165,37 +273,19 @@ func (m *PayloadFrame) Encode() []byte {
 }
 
 func (m *PayloadFrame) Build() (y3.Packet, error) {
-	var cary y3.Builder
+	var cary y3.Encoder
 	cary.SetSeqID(int(m.Sid), false)
-	cary.AddValBytes(m.Carriage)
+	cary.SetBytesV(m.Carriage)
 
 	pktCarriage, err := cary.Packet()
 	if err != nil {
 		return nil, err
 	}
 
-	var pl y3.Builder
+	var pl y3.Encoder
 	pl.SetSeqID(int(TagOfPayloadFrame), true)
 	pl.AddPacket(pktCarriage)
 	return pl.Packet()
-}
-
-// DecodeToPayloadFrame decodes Y3 encoded bytes to PayloadFrame
-func DecodeToPayloadFrame(buf []byte) (*PayloadFrame, error) {
-	nodeBlock := y3.NodePacket{}
-	_, err := y3.DecodeToNodePacket(buf, &nodeBlock)
-	if err != nil {
-		return nil, err
-	}
-
-	payload := &PayloadFrame{}
-	for _, v := range nodeBlock.PrimitivePackets {
-		payload.Sid = v.SeqID()
-		payload.Carriage = v.GetValBuf()
-		break
-	}
-
-	return payload, nil
 }
 
 // DataFrame defines the data structure carried with user's data
@@ -205,6 +295,8 @@ type DataFrame struct {
 	payloadFrame        *PayloadFrame
 	chunkedPayloadFrame *ChunkedPayloadFrame
 	isChunked           bool
+	rd                  io.Reader
+	chunkedSize         int
 }
 
 var _ Frame = &DataFrame{}
@@ -253,7 +345,7 @@ func (d *DataFrame) Build() (y3.Packet, error) {
 		return nil, err
 	}
 
-	var b y3.Builder
+	var b y3.Encoder
 	b.SetSeqID(int(TagOfDataFrame), true)
 	b.AddPacket(meta)
 	if d.isChunked {
@@ -267,7 +359,19 @@ func (d *DataFrame) Build() (y3.Packet, error) {
 
 // GetCarriage return user's raw data in `DataFrame`
 func (d *DataFrame) Carriage() []byte {
+	if d.isChunked {
+		panic("error")
+	}
 	return d.payloadFrame.Carriage
+}
+
+// CarriageReader return an io.Reader as user data
+func (d *DataFrame) Reader() io.Reader {
+	return d.rd
+}
+
+func (d *DataFrame) ChunkedSize() int {
+	return d.chunkedSize
 }
 
 // TransactionID return transactionID string
@@ -277,41 +381,15 @@ func (d *DataFrame) TransactionID() string {
 
 // GetDataTagID return the Tag of user's data
 func (d *DataFrame) CarriageSeqID() byte {
+	if d.isChunked {
+		return d.chunkedPayloadFrame.sid
+	}
 	return d.payloadFrame.Sid
 }
 
 // Encode return Y3 encoded bytes of `DataFrame`
 func (d *DataFrame) Encode() []byte {
 	panic("not implemented")
-}
-
-// DecodeToDataFrame decode Y3 encoded bytes to `DataFrame`
-func DecodeToDataFrame(buf []byte) (*DataFrame, error) {
-	packet := y3.NodePacket{}
-	_, err := y3.DecodeToNodePacket(buf, &packet)
-	if err != nil {
-		return nil, err
-	}
-
-	data := &DataFrame{}
-
-	if metaBlock, ok := packet.NodePackets[byte(TagOfMetaFrame)]; ok {
-		meta, err := DecodeToMetaFrame(metaBlock.GetRawBytes())
-		if err != nil {
-			return nil, err
-		}
-		data.metaFrame = meta
-	}
-
-	if payloadBlock, ok := packet.NodePackets[byte(TagOfPayloadFrame)]; ok {
-		payload, err := DecodeToPayloadFrame(payloadBlock.GetRawBytes())
-		if err != nil {
-			return nil, err
-		}
-		data.payloadFrame = payload
-	}
-
-	return data, nil
 }
 
 // Test process
@@ -325,13 +403,81 @@ func (o *p) Read(buf []byte) (int, error) {
 		return 0, io.EOF
 	}
 	time.Sleep(100 * time.Millisecond)
-	fmt.Printf("(source stream)==>flush:[%# x]\n", o.buf[o.lastRead])
+	fmt.Printf("(source stream)==>flush:[%#x]\n", o.buf[o.lastRead])
 	copy(buf, []byte{o.buf[o.lastRead]})
 	o.lastRead++
 	return 1, nil
 }
 
+func ReadFrame(stream io.Reader) error {
+	dec := y3.NewDecoder(stream)
+	// read T at first, then will know the seqID of current packet
+	err := dec.ReadHeader()
+	if err != nil {
+		return err
+	}
+
+	switch dec.SeqID() {
+	case int(TagOfDataFrame):
+		d, err := ReadDataFrame(dec)
+		if err != nil {
+			return err
+		}
+		log.Printf("data-m=%v", d.metaFrame)
+		log.Printf("data-p=%v", d.payloadFrame)
+		log.Printf("R-data=tid:%s, csid=%# x, isStreamMode=%v, cary=[%# x]", d.TransactionID(), d.CarriageSeqID(), d.isChunked, d.Carriage())
+	default:
+		panic("unknow packet")
+	}
+
+	return err
+}
+
+func ReadFrameInChunkedMode(stream io.Reader) error {
+	dec := y3.NewDecoder(stream)
+	// read T at first, then will know the seqID of current packet
+	err := dec.ReadHeader()
+	if err != nil {
+		return err
+	}
+
+	switch dec.SeqID() {
+	case int(TagOfDataFrame):
+		d, err := ReadChunkedDataFrame(dec)
+		if err != nil {
+			return err
+		}
+		log.Printf("data-m=%v", d.metaFrame)
+		log.Printf("data-p=%v", d.chunkedPayloadFrame)
+		log.Printf("R-data=tid:%s, csid=%# x, isStreamMode=%v, chunkedSize=%d", d.TransactionID(), d.CarriageSeqID(), d.isChunked, d.ChunkedSize())
+		// operate the reader
+		r := d.Reader()
+		buf := make([]byte, d.ChunkedSize())
+		for {
+			n, err := r.Read(buf)
+			if n >= 0 || err == io.EOF {
+				log.Printf("data=%# x", buf[:n])
+				break
+			}
+			if err != nil {
+				panic(err)
+			}
+		}
+	default:
+		panic("unknow packet")
+	}
+
+	return err
+}
+
 func main() {
+	log.Println(">>> Start: Receive data in Chunked Mode---")
+	recvInChunkedMode()
+	// return
+
+	log.Println(">>> Start: Receive data ---")
+	recv()
+
 	log.Println(">>> Start: Emit data ---")
 	emit()
 
@@ -339,6 +485,52 @@ func main() {
 	emitInChunkedMode()
 
 	fmt.Println("OVER")
+}
+
+func recvInChunkedMode() {
+	data := []byte{
+		TagOfDataFrame | 0x80, 0x0D,
+		TagOfMetaFrame | 0x80, 0x06, TagOfTransactionID, 0x04, 0x79, 0x6f, 0x6d, 0x6f,
+		TagOfPayloadFrame | 0x80, 0x04, 0x09, 0x02, 0xFF, 0xFE,
+		// TagOfDataFrame | 0x80, 0x0C,
+		// TagOfMetaFrame | 0x80, 0x06, TagOfTransactionID, 0x04, 0x6f, 0x6f, 0x6f, 0x6f,
+		// TagOfPayloadFrame | 0x80, 0x03, 0x09, 0x01, 0x01,
+	}
+	stream := &p{buf: data}
+	// decode
+	for {
+		err := ReadFrameInChunkedMode(stream)
+		if err != nil {
+			if err == io.EOF {
+				log.Printf("DONE recv")
+				break
+			}
+			panic(err)
+		}
+	}
+}
+
+func recv() {
+	data := []byte{
+		TagOfDataFrame | 0x80, 0x0D,
+		TagOfMetaFrame | 0x80, 0x06, TagOfTransactionID, 0x04, 0x79, 0x6f, 0x6d, 0x6f,
+		TagOfPayloadFrame | 0x80, 0x04, 0x09, 0x02, 0xFF, 0xFE,
+		TagOfDataFrame | 0x80, 0x0C,
+		TagOfMetaFrame | 0x80, 0x06, TagOfTransactionID, 0x04, 0x6f, 0x6f, 0x6f, 0x6f,
+		TagOfPayloadFrame | 0x80, 0x03, 0x09, 0x01, 0x01,
+	}
+	stream := &p{buf: data}
+	// decode
+	for {
+		err := ReadFrame(stream)
+		if err != nil {
+			if err == io.EOF {
+				log.Printf("DONE recv")
+				break
+			}
+			panic(err)
+		}
+	}
 }
 
 func emit() {
@@ -354,7 +546,7 @@ func emit() {
 	if err != nil {
 		panic(err)
 	}
-	log.Printf("DONE, total buf=[%# x]\n\n", data.Raw())
+	log.Printf("DONE, total buf=[%# x]\n\n", data.Bytes())
 }
 
 func emitInChunkedMode() {
@@ -372,6 +564,7 @@ func emitInChunkedMode() {
 	if err != nil {
 		panic(err)
 	}
+
 	buf := &bytes.Buffer{}
 	io.Copy(buf, data.Reader())
 	log.Printf("DONE, total buf=[%# x]", buf)
