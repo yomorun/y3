@@ -30,9 +30,8 @@ func (r *chunkVReader) Read(p []byte) (n int, err error) {
 		if err != nil {
 			if err == io.EOF {
 				return n, nil
-			} else {
-				return 0, err
 			}
+			return 0, err
 		}
 		return n, nil
 	}
