@@ -44,25 +44,35 @@ func main() {
 	// in Y3-Codec:
 
 	// 0x81 -> node
-	var foo = y3.NewNodePacketEncoder(0x01)
+	var foo y3.Encoder
+	foo.SetSeqID(0x01, true)
 
 	// 0x02 -> foo.ID=-11
-	var yp1 = y3.NewPrimitivePacketEncoder(0x02)
-	yp1.SetInt32Value(-1)
-	foo.AddPrimitivePacket(yp1)
+	var id y3.Encoder
+	id.SetSeqID(0x02, false)
+	id.SetInt32V(-1)
+
+	foo.AddPacket(id)
 
 	// 0x83 -> &bar{}
 	var bar = y3.NewNodePacketEncoder(0x03)
 
 	// 0x04 -> bar.Name="C"
-	var yp2 = y3.NewPrimitivePacketEncoder(0x04)
-	yp2.SetStringValue("C")
-	bar.AddPrimitivePacket(yp2)
+	var name y3.Encoder
+	name.SetSeqID(0x04)
+	name.SetStringV("C")
+	bar.AddPacket(name)
 
 	// -> foo.bar=&bar
 	foo.AddNodePacket(bar)
 
-	fmt.Printf("res=%#v", foo.Encode()) // res=[]byte{0x81, 0x08, 0x02, 0x01, 0x7F, 0x83, 0x03, 0x04, 0x01, 0x43}
+	// Buid to Packet
+	packet, _ = foo.Packet()
+
+	// Read to buf
+	buf := &bytes.Buffer{}
+	io.Copy(buf, packet.Reader())
+	fmt.Printf("res=%#v", buf) // res=[]byte{0x81, 0x08, 0x02, 0x01, 0x7F, 0x83, 0x03, 0x04, 0x01, 0x43}
 }
 ```
 
