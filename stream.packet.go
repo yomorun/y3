@@ -44,7 +44,7 @@ func (p *StreamPacket) Bytes() []byte {
 	return buf.Bytes()
 }
 
-// GetValReader return an io.Reader which can be read as the content of V.
+// VReader return an io.Reader which can be read as the content of V.
 func (p *StreamPacket) VReader() io.Reader {
 	if !p.chunkMode {
 		return bytes.NewReader(p.vbuf)
@@ -101,7 +101,7 @@ func (p *StreamPacket) BytesV() []byte {
 	return p.vbuf
 }
 
-// StringV return V as utf-8 string
+// UTF8StringV return V as utf-8 string
 func (p *StreamPacket) UTF8StringV() string {
 	return string(p.vbuf)
 }

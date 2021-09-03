@@ -4,7 +4,7 @@ import (
 	"github.com/yomorun/y3/encoding"
 )
 
-// SetStringV set string type value as V
+// SetUTF8StringV set utf-8 string type value as V
 func (b *Encoder) SetUTF8StringV(v string) {
 	buf := []byte(v)
 	b.SetBytesV(buf)

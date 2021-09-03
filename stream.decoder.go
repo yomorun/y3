@@ -7,14 +7,14 @@ import (
 	"github.com/yomorun/y3/spec"
 )
 
-// Encoder is the tool for creating a y3 packet easily
+// Decoder is the tool for decoding y3 packet from stream
 type Decoder struct {
 	tag spec.T
 	len *spec.L
 	rd  io.Reader
-	vr  io.Reader
 }
 
+// NewDecoder returns a Decoder from an io.Reader
 func NewDecoder(reader io.Reader) *Decoder {
 	return &Decoder{
 		rd: reader,
@@ -30,16 +30,6 @@ func (d *Decoder) SeqID() int {
 func (d *Decoder) UnderlyingReader() io.Reader {
 	return d.rd
 }
-
-// // SetChunkedDataReader set chunked io.Reader
-// func (d *Decoder) SetChunkedDataReader(r io.Reader) {
-// 	d.vr = r
-// }
-
-// // ChunkedDataReader return chunked io.Reader
-// func (d *Decoder) ChunkedDataReader() io.Reader {
-// 	return d.vr
-// }
 
 // ReadHeader will block until io.EOF or recieve T and L of a packet.
 func (d *Decoder) ReadHeader() error {

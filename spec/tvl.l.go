@@ -38,7 +38,7 @@ func NewL(len int) (L, error) {
 	return l, nil
 }
 
-// Raw will return the raw bytes of L.
+// Bytes will return the raw bytes of L.
 func (l L) Bytes() []byte {
 	return l.buf
 }
@@ -48,7 +48,7 @@ func (l L) Size() int {
 	return l.size
 }
 
-// Value returns the size of V.
+// VSize returns the size of V.
 func (l L) VSize() int {
 	return int(l.len)
 }

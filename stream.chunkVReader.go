@@ -35,14 +35,13 @@ func (r *chunkVReader) Read(p []byte) (n int, err error) {
 			}
 		}
 		return n, nil
-	} else {
-		n, err := r.src.Read(p)
-		r.off += n
-		if err != nil {
-			return n, err
-		}
-		return n, nil
 	}
+	n, err = r.src.Read(p)
+	r.off += n
+	if err != nil {
+		return n, err
+	}
+	return n, nil
 }
 
 // WriteTo implement io.WriteTo interface

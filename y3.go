@@ -14,7 +14,7 @@ var (
 	errNilReader       = errors.New("y3.Decoder: nil source reader")
 )
 
-// Packet
+// Packet decribe a y3 codec packet
 type Packet interface {
 	// SeqID returns the sequence ID of this packet.
 	SeqID() int

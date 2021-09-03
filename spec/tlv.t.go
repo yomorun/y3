@@ -28,13 +28,13 @@ func (t T) Bytes() []byte {
 	return []byte{byte(t)}
 }
 
-// IsNode will return true if this packet contains other packets.
+// IsNodeMode will return true if this packet contains other packets.
 // Otherwise return flase.
 func (t T) IsNodeMode() bool {
 	return t&flagBitNode == flagBitNode
 }
 
-// SetIsNodeMode will set T to indicates this packet contains
+// SetNodeMode will set T to indicates this packet contains
 // other packets.
 func (t T) SetNodeMode(flag bool) {
 	if flag {
