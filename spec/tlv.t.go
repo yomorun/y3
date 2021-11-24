@@ -36,9 +36,9 @@ func (t T) IsNodeMode() bool {
 
 // SetNodeMode will set T to indicates this packet contains
 // other packets.
-func (t T) SetNodeMode(flag bool) {
+func (t *T) SetNodeMode(flag bool) {
 	if flag {
-		t |= flagBitNode
+		*t |= flagBitNode
 	}
 }
 
