@@ -17,9 +17,6 @@ var (
 func ReadPacket(reader io.Reader) ([]byte, error) {
 	tag, err := readByte(reader)
 	if err != nil {
-		if err == io.EOF {
-			return nil, ErrMalformed
-		}
 		return nil, err
 	}
 	// buf will contain a complete y3 encoded handshakeFrame
@@ -34,9 +31,6 @@ func ReadPacket(reader io.Reader) ([]byte, error) {
 	for {
 		b, err := readByte(reader)
 		if err != nil {
-			if err == io.EOF {
-				return nil, ErrMalformed
-			}
 			return nil, err
 		}
 		lenbuf.WriteByte(b)

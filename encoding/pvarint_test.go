@@ -9,6 +9,7 @@ import (
 
 func TestPInt32(t *testing.T) {
 	testPVarInt32(t, -1, []byte{0x7F})
+	testPVarInt32(t, -3, []byte{0x7D})
 	testPVarInt32(t, -5, []byte{0x7B})
 	testPVarInt32(t, 63, []byte{0x3F})
 	testPVarInt32(t, -65, []byte{0xFF, 0x3F})
