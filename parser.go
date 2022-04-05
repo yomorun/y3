@@ -1,7 +1,6 @@
 package y3
 
 import (
-	"bufio"
 	"bytes"
 	"errors"
 	"io"
@@ -15,10 +14,8 @@ var (
 
 // ReadPacket will try to read a Y3 encoded packet from the reader
 func ReadPacket(reader io.Reader) ([]byte, error) {
-	br := bufio.NewReader(reader)
-
 	// the first byte is y3.Tag
-	tag, err := br.ReadByte()
+	tag, err := readByte(reader)
 	if err != nil {
 		if err == io.EOF {
 			return nil, ErrMalformed
@@ -35,7 +32,7 @@ func ReadPacket(reader io.Reader) ([]byte, error) {
 	// read y3.Length bytes, a varint format
 	lenbuf := bytes.Buffer{}
 	for {
-		b, err := br.ReadByte()
+		b, err := readByte(reader)
 		if err != nil {
 			if err == io.EOF {
 				return nil, ErrMalformed
@@ -66,12 +63,13 @@ func ReadPacket(reader io.Reader) ([]byte, error) {
 	buf.Write(lenbuf.Bytes())
 
 	// read y3.Val bytes
-	valbuf, err := br.Peek(int(length))
+	var valbuf = make([]byte, length)
+	m, err := io.ReadFull(reader, valbuf)
 	if err != nil {
 		return nil, ErrMalformed
 	}
 
-	if len(valbuf) != int(length) {
+	if m != int(length) {
 		return nil, ErrMalformed
 	}
 
