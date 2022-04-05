@@ -20,3 +20,6 @@ test:
 
 cover:
 	$(GO) test $(VETPACKAGES) -coverprofile=prof.out && $(GO) tool cover -html=prof.out && rm prof.out
+	
+bench:
+	$(GO) test -bench=. -benchmem
