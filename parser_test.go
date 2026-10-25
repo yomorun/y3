@@ -38,8 +38,9 @@ func TestStreamParser4(t *testing.T) {
 	data := []byte{}
 	reader := &pr{buf: data}
 
+	// a stream closed between packets is a clean end, not a malformed packet
 	p, err := ReadPacket(reader)
-	assert.ErrorIs(t, err, ErrMalformed)
+	assert.ErrorIs(t, err, io.EOF)
 	assert.Equal(t, []byte(nil), p)
 }
 
