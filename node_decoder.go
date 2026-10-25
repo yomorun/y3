@@ -3,6 +3,7 @@ package y3
 import (
 	"bytes"
 	"errors"
+	"fmt"
 
 	"github.com/yomorun/y3/encoding"
 	"github.com/yomorun/y3/utils"
@@ -71,6 +72,9 @@ func DecodeToNodePacket(buf []byte, pct *NodePacket) (consumedBytes int, err err
 		return pos, errors.New("found L of V smaller than 0")
 	}
 	endPos := pos + vl
+	if endPos > len(buf) {
+		return pos, fmt.Errorf("beyond the boundary, pos=%v, endPos=%v", pos, endPos)
+	}
 	pct.basePacket.valbuf = buf[pos:endPos]
 	pct.buf.Write(buf[pos:endPos])
 
