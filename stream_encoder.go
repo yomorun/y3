@@ -33,7 +33,7 @@ func (se *StreamEncoder) AddPacket(packet *PrimitivePacketEncoder) {
 
 func (se *StreamEncoder) AddPacketBuffer(buf []byte) {
 	se.pbuf.Write(buf)
-	se.growLen(len(se.pbuf.Bytes()))
+	se.growLen(len(buf))
 }
 
 func (se *StreamEncoder) AddStreamPacket(tag byte, length int, reader io.Reader) {
@@ -128,9 +128,17 @@ func (r *yR) Read(p []byte) (n int, err error) {
 		}
 		return n, nil
 	} else {
+		// do not read past the declared length of the stream packet
+		if len(p) > r.length-r.off {
+			p = p[:r.length-r.off]
+		}
 		n, err := r.src.Read(p)
 		r.off += n
 		if err != nil {
+			// the source ended before the declared length
+			if err == io.EOF && r.off < r.length {
+				return n, io.ErrUnexpectedEOF
+			}
 			return n, err
 		}
 		return n, nil

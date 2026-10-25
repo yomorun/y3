@@ -95,3 +95,38 @@ func TestStreamEncoderNilReader(t *testing.T) {
 	}
 	assert.Equal(t, []byte(nil), final.Bytes())
 }
+
+func TestStreamEncoderMultiplePackets(t *testing.T) {
+	expected := []byte{
+		0x10, 0x0C,
+		0x11, 0x02, 0x01, 0x02,
+		0x13, 0x01, 0x07,
+		0x12, 0x03, 0x01, 0x02, 0x03}
+	data := []byte{0x01, 0x02, 0x03}
+
+	encoder := NewStreamEncoder(0x10)
+	encoder.AddPacketBuffer([]byte{0x11, 0x02, 0x01, 0x02})
+	encoder.AddPacketBuffer([]byte{0x13, 0x01, 0x07})
+	encoder.AddStreamPacket(0x12, len(data), bytes.NewReader(data))
+
+	assert.EqualValues(t, len(expected), encoder.GetLen())
+
+	n, err := io.ReadAll(encoder.GetReader())
+	assert.NoError(t, err)
+	assert.Equal(t, expected, n)
+}
+
+func TestStreamEncoderSourceLength(t *testing.T) {
+	// a source longer than the declared length is cut at the length
+	encoder := NewStreamEncoder(0x10)
+	encoder.AddStreamPacket(0x12, 3, bytes.NewReader([]byte{0x01, 0x02, 0x03, 0x04, 0x05}))
+	n, err := io.ReadAll(encoder.GetReader())
+	assert.NoError(t, err)
+	assert.Equal(t, []byte{0x10, 0x05, 0x12, 0x03, 0x01, 0x02, 0x03}, n)
+
+	// a source shorter than the declared length is an error
+	encoder = NewStreamEncoder(0x10)
+	encoder.AddStreamPacket(0x12, 5, bytes.NewReader([]byte{0x01, 0x02}))
+	_, err = io.ReadAll(encoder.GetReader())
+	assert.Equal(t, io.ErrUnexpectedEOF, err)
+}
