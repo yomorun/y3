@@ -34,7 +34,7 @@ func DecodeToNodePacket(buf []byte, pct *NodePacket) (consumedBytes int, err err
 	}
 
 	pct.basePacket = &basePacket{
-		valbuf: buf,
+		valbuf: []byte{},
 		buf:    &bytes.Buffer{},
 	}
 
@@ -62,6 +62,7 @@ func DecodeToNodePacket(buf []byte, pct *NodePacket) (consumedBytes int, err err
 	pos += codec.Size
 	// if `Length` is 0, means empty node packet
 	if vallen == 0 {
+		pct.basePacket.valbuf = nil
 		return pos, nil
 	}
 
