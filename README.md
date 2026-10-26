@@ -96,7 +96,7 @@ func main() {
 
 ### Decode examples 2: decode a node packet
 
-Children of a node are kept in maps keyed by their sequence ID.
+Children of a node are kept in maps keyed by their sequence ID. When several children share a sequence ID, the maps keep only the last one; see example 3.
 
 ```go
 package main
@@ -130,6 +130,57 @@ func main() {
 	fmt.Printf("Tag Key=[%#X.%#X], Value=%v\n", res.SeqID(), v2.SeqID(), p2) // Tag Key=[0X4.0XB], Value=C
 }
 ```
+
+### Decode examples 3: decode a list
+
+A list is a node whose children share a sequence ID. `Range` visits every child in wire order.
+
+```go
+package main
+
+import (
+	"fmt"
+
+	y3 "github.com/yomorun/y3"
+)
+
+func main() {
+	// a list: three children share the sequence ID 0x02
+	list := y3.NewNodePacketEncoder(0x01)
+	for _, s := range []string{"a", "b", "c"} {
+		item := y3.NewPrimitivePacketEncoder(0x02)
+		item.SetStringValue(s)
+		list.AddPrimitivePacket(item)
+	}
+	buf := list.Encode() // []byte{0x81, 0x9, 0x2, 0x1, 0x61, 0x2, 0x1, 0x62, 0x2, 0x1, 0x63}
+
+	var res y3.NodePacket
+	if _, err := y3.DecodeToNodePacket(buf, &res); err != nil {
+		panic(err)
+	}
+	fmt.Println(len(res.PrimitivePackets)) // 1: the map keeps only the last child
+
+	// Range visits every child in wire order; return false to stop
+	err := res.Range(func(seqID byte, node *y3.NodePacket, prim *y3.PrimitivePacket) bool {
+		if prim != nil {
+			v, err := prim.ToUTF8String()
+			if err != nil {
+				panic(err)
+			}
+			fmt.Printf("Tag Key=[%#X.%#X], Value=%v\n", res.SeqID(), seqID, v)
+		}
+		return true
+	})
+	if err != nil {
+		panic(err)
+	}
+	// Tag Key=[0X1.0X2], Value=a
+	// Tag Key=[0X1.0X2], Value=b
+	// Tag Key=[0X1.0X2], Value=c
+}
+```
+
+For each child exactly one of `node` and `prim` is non-nil. `Range` also works on a child taken from a map, for example `res.NodePackets[0x03].Range(...)`.
 
 ## Streaming
 
@@ -217,7 +268,7 @@ v, err := res.ToInt32() // v == -1
 ## Limitations
 
 - Sequence IDs range from `0x00` to `0x3F`. The encoders panic on larger values.
-- `DecodeToNodePacket` keeps one child per sequence ID, so a node whose children share a sequence ID (a list) decodes to its last child only. See [#20](https://github.com/yomorun/y3/issues/20).
+- `NodePackets` and `PrimitivePackets` keep one child per sequence ID. Read a list with `Range`, see [Decode examples 3](#decode-examples-3-decode-a-list).
 
 ## Contributors
 
