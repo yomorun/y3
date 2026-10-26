@@ -1,6 +1,7 @@
 package y3
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -240,4 +241,122 @@ func TestTruncatedNode(t *testing.T) {
 		_, err := DecodeToNodePacket([]byte{0x81, 0x04, 0x82, 0x05, 0x01, 0x01}, &NodePacket{})
 		assert.Error(t, err)
 	})
+}
+
+func TestNodeRangeRepeatedSeqID(t *testing.T) {
+	node := NewNodePacketEncoder(0x01)
+	for _, s := range []string{"a", "b", "c"} {
+		p := NewPrimitivePacketEncoder(0x02)
+		p.SetStringValue(s)
+		node.AddPrimitivePacket(p)
+	}
+
+	res := &NodePacket{}
+	_, err := DecodeToNodePacket(node.Encode(), res)
+	assert.NoError(t, err)
+	// the map keeps only the last child for a sequence ID
+	assert.Equal(t, 1, len(res.PrimitivePackets))
+
+	var got []string
+	err = res.Range(func(seqID byte, node *NodePacket, prim *PrimitivePacket) bool {
+		assert.EqualValues(t, 0x02, seqID)
+		assert.Nil(t, node)
+		v, err := prim.ToUTF8String()
+		assert.NoError(t, err)
+		got = append(got, v)
+		return true
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"a", "b", "c"}, got)
+}
+
+func TestNodeRangeOrder(t *testing.T) {
+	// a list of messages, each a node with the same sequence ID, between two primitives
+	list := NewNodePacketEncoder(0x01)
+	first := NewPrimitivePacketEncoder(0x02)
+	first.SetInt32Value(1)
+	list.AddPrimitivePacket(first)
+	for _, s := range []string{"hi", "hello"} {
+		msg := NewNodePacketEncoder(0x03)
+		content := NewPrimitivePacketEncoder(0x01)
+		content.SetStringValue(s)
+		msg.AddPrimitivePacket(content)
+		list.AddNodePacket(msg)
+	}
+	last := NewPrimitivePacketEncoder(0x02)
+	last.SetInt32Value(2)
+	list.AddPrimitivePacket(last)
+
+	res := &NodePacket{}
+	_, err := DecodeToNodePacket(list.Encode(), res)
+	assert.NoError(t, err)
+
+	var got []string
+	err = res.Range(func(seqID byte, node *NodePacket, prim *PrimitivePacket) bool {
+		if node != nil {
+			assert.Nil(t, prim)
+			content := node.PrimitivePackets[0x01]
+			v, err := content.ToUTF8String()
+			assert.NoError(t, err)
+			got = append(got, fmt.Sprintf("node %#x: %s", seqID, v))
+		} else {
+			v, err := prim.ToInt32()
+			assert.NoError(t, err)
+			got = append(got, fmt.Sprintf("prim %#x: %d", seqID, v))
+		}
+		return true
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"prim 0x2: 1", "node 0x3: hi", "node 0x3: hello", "prim 0x2: 2"}, got)
+}
+
+func TestNodeRangeStop(t *testing.T) {
+	node := NewNodePacketEncoder(0x01)
+	for i := 0; i < 3; i++ {
+		p := NewPrimitivePacketEncoder(0x02)
+		p.SetInt32Value(int32(i))
+		node.AddPrimitivePacket(p)
+	}
+
+	res := &NodePacket{}
+	_, err := DecodeToNodePacket(node.Encode(), res)
+	assert.NoError(t, err)
+
+	calls := 0
+	err = res.Range(func(byte, *NodePacket, *PrimitivePacket) bool {
+		calls++
+		return false
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, 1, calls)
+}
+
+func TestNodeRangeEmpty(t *testing.T) {
+	sub := NewNodePacketEncoder(0x03)
+	sub.AddBytes([]byte{})
+	node := NewNodePacketEncoder(0x06)
+	node.AddNodePacket(sub)
+
+	res := &NodePacket{}
+	_, err := DecodeToNodePacket(node.Encode(), res)
+	assert.NoError(t, err)
+
+	var seqIDs []byte
+	err = res.Range(func(seqID byte, node *NodePacket, _ *PrimitivePacket) bool {
+		seqIDs = append(seqIDs, seqID)
+		// the child itself is empty
+		assert.NoError(t, node.Range(func(byte, *NodePacket, *PrimitivePacket) bool {
+			t.Error("empty node has no children")
+			return true
+		}))
+		return true
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, []byte{0x03}, seqIDs)
+
+	// a node that was never decoded has no children either
+	assert.NoError(t, NodePacket{}.Range(func(byte, *NodePacket, *PrimitivePacket) bool {
+		t.Error("zero NodePacket has no children")
+		return true
+	}))
 }
