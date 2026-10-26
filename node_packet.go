@@ -17,7 +17,7 @@ type NodePacket struct {
 // children that share a sequence ID. For each child exactly one of node
 // and prim is non-nil. Range stops when fn returns false.
 func (n NodePacket) Range(fn func(seqID byte, node *NodePacket, prim *PrimitivePacket) bool) error {
-	if n.basePacket == nil || n.length == 0 {
+	if n.basePacket == nil {
 		return nil
 	}
 

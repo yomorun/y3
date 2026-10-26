@@ -360,3 +360,33 @@ func TestNodeRangeEmpty(t *testing.T) {
 		return true
 	}))
 }
+
+func TestEmptyNodeValBuf(t *testing.T) {
+	// an empty node followed by the next packet
+	res := &NodePacket{}
+	endPos, err := DecodeToNodePacket([]byte{0x81, 0x00, 0x02, 0x01, 0x05}, res)
+	assert.NoError(t, err)
+	assert.Equal(t, 2, endPos)
+	assert.Equal(t, 0, res.Length())
+	assert.Equal(t, 0, len(res.GetValBuf()))
+	assert.Equal(t, []byte{0x81, 0x00}, res.GetRawBytes())
+
+	// an empty node that is the whole input
+	res = &NodePacket{}
+	_, err = DecodeToNodePacket([]byte{0x86, 0x00}, res)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, len(res.GetValBuf()))
+
+	// an empty child node
+	res = &NodePacket{}
+	_, err = DecodeToNodePacket([]byte{0x86, 0x02, 0x83, 0x00}, res)
+	assert.NoError(t, err)
+	sub := res.NodePackets[0x03]
+	assert.Equal(t, 0, len(sub.GetValBuf()))
+
+	// decoding fails before `Length` is read
+	res = &NodePacket{}
+	_, err = DecodeToNodePacket([]byte{0x81, 0x80}, res)
+	assert.Error(t, err)
+	assert.Equal(t, 0, len(res.GetValBuf()))
+}
