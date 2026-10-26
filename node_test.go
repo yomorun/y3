@@ -216,3 +216,28 @@ func TestComplexNodes(t *testing.T) {
 	assert.NoError(t, err)
 	assert.EqualValues(t, -2, vn2p1)
 }
+
+func TestTruncatedNode(t *testing.T) {
+	sub := NewPrimitivePacketEncoder(0x02)
+	sub.SetStringValue("hello")
+	node := NewNodePacketEncoder(0x01)
+	node.AddPrimitivePacket(sub)
+	buf := node.Encode()
+	assert.Equal(t, []byte{0x81, 0x07, 0x02, 0x05, 0x68, 0x65, 0x6C, 0x6C, 0x6F}, buf)
+
+	for i := 1; i < len(buf); i++ {
+		// with and without spare capacity behind the truncated buffer
+		for _, in := range [][]byte{buf[:i:i], buf[:i]} {
+			assert.NotPanics(t, func() {
+				_, err := DecodeToNodePacket(in, &NodePacket{})
+				assert.Error(t, err, "input % x", in)
+			})
+		}
+	}
+
+	// the outer node is complete, the nested node is truncated
+	assert.NotPanics(t, func() {
+		_, err := DecodeToNodePacket([]byte{0x81, 0x04, 0x82, 0x05, 0x01, 0x01}, &NodePacket{})
+		assert.Error(t, err)
+	})
+}
