@@ -104,8 +104,13 @@ func (r *valR) Read(p []byte) (n int, err error) {
 		bound = r.length - r.off
 	}
 	// update readed
-	r.off, err = r.src.Read(p[0:bound])
-	return r.off, err
+	n, err = r.src.Read(p[0:bound])
+	r.off += n
+	// the source ended before the whole value was read
+	if err == io.EOF && r.off < r.length {
+		err = io.ErrUnexpectedEOF
+	}
+	return n, err
 }
 
 func StreamReadPacket(reader io.Reader) (*StreamReader, error) {
