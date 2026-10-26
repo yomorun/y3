@@ -31,6 +31,10 @@ func ReadPacket(reader io.Reader) ([]byte, error) {
 	for {
 		b, err := readByte(reader)
 		if err != nil {
+			// the stream ended inside the packet header
+			if err == io.EOF {
+				return nil, ErrMalformed
+			}
 			return nil, err
 		}
 		lenbuf.WriteByte(b)
